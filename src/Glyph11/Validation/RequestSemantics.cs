@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using Glyph11.Protocol;
 
 namespace Glyph11.Validation;
