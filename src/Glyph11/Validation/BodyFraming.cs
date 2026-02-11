@@ -1,3 +1,4 @@
+using Glyph11.Parser;
 using Glyph11.Parser.UltraHardened;
 
 namespace Glyph11.Validation;
@@ -13,7 +14,7 @@ public enum BodyFraming : byte
     /// <summary>Known-size body — use <see cref="BodyFramingResult.ContentLength"/>.</summary>
     ContentLength,
 
-    /// <summary>Chunked transfer-encoding — use <see cref="Glyph11.Parser.Hardened.ChunkedBodyStream"/>.</summary>
+    /// <summary>Chunked transfer-encoding — use <see cref="ChunkedBodyStream"/>.</summary>
     Chunked,
 }
 

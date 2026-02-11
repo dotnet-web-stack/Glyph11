@@ -1,10 +1,9 @@
 using Glyph11;
-using Glyph11.Parser;
 using Glyph11.Parser.Hardened;
 
 namespace Tests;
 
-public partial class HardenedParserTests
+public partial class UltraHardenedParserTests
 {
     // ================================================================
     // Resource limits
@@ -20,9 +19,9 @@ public partial class HardenedParserTests
         var limits = Defaults with { MaxHeaderCount = 2 };
         var raw =
             "GET / HTTP/1.1\r\n" +
+            "Host: x\r\n" +
             "H1: v1\r\n" +
             "H2: v2\r\n" +
-            "H3: v3\r\n" +
             "\r\n";
 
         Assert.Throws<HttpParseException>(
@@ -37,8 +36,8 @@ public partial class HardenedParserTests
         var limits = Defaults with { MaxHeaderCount = 2 };
         var raw =
             "GET / HTTP/1.1\r\n" +
+            "Host: x\r\n" +
             "H1: v1\r\n" +
-            "H2: v2\r\n" +
             "\r\n";
 
         var (ok, _) = Parse(raw, multi, limits);
@@ -54,7 +53,7 @@ public partial class HardenedParserTests
     public void Throws_WhenHeaderNameExceedsLimit(bool multi)
     {
         var limits = Defaults with { MaxHeaderNameLength = 4 };
-        var raw = "GET / HTTP/1.1\r\nLongName: val\r\n\r\n";
+        var raw = "GET / HTTP/1.1\r\nHost: x\r\nLongName: val\r\n\r\n";
 
         Assert.Throws<HttpParseException>(
             () => Parse(raw, multi, limits));
@@ -68,7 +67,7 @@ public partial class HardenedParserTests
     public void Throws_WhenHeaderValueExceedsLimit(bool multi)
     {
         var limits = Defaults with { MaxHeaderValueLength = 3 };
-        var raw = "GET / HTTP/1.1\r\nKey: longvalue\r\n\r\n";
+        var raw = "GET / HTTP/1.1\r\nHost: x\r\nKey: longvalue\r\n\r\n";
 
         Assert.Throws<HttpParseException>(
             () => Parse(raw, multi, limits));
@@ -82,7 +81,7 @@ public partial class HardenedParserTests
     public void Throws_WhenMethodExceedsLimit(bool multi)
     {
         var limits = Defaults with { MaxMethodLength = 3 };
-        var raw = "POST / HTTP/1.1\r\n\r\n";
+        var raw = "POST / HTTP/1.1\r\nHost: x\r\n\r\n";
 
         Assert.Throws<HttpParseException>(
             () => Parse(raw, multi, limits));
@@ -94,7 +93,7 @@ public partial class HardenedParserTests
     public void AcceptsMethodAtExactLimit(bool multi)
     {
         var limits = Defaults with { MaxMethodLength = 3 };
-        var raw = "GET / HTTP/1.1\r\n\r\n";
+        var raw = "GET / HTTP/1.1\r\nHost: x\r\n\r\n";
 
         var (ok, _) = Parse(raw, multi, limits);
         Assert.True(ok);
@@ -108,7 +107,7 @@ public partial class HardenedParserTests
     public void Throws_WhenUrlExceedsLimit(bool multi)
     {
         var limits = Defaults with { MaxUrlLength = 5 };
-        var raw = "GET /toolong HTTP/1.1\r\n\r\n";
+        var raw = "GET /toolong HTTP/1.1\r\nHost: x\r\n\r\n";
 
         Assert.Throws<HttpParseException>(
             () => Parse(raw, multi, limits));
@@ -122,7 +121,7 @@ public partial class HardenedParserTests
     public void Throws_WhenQueryParamCountExceedsLimit(bool multi)
     {
         var limits = Defaults with { MaxQueryParameterCount = 2 };
-        var raw = "GET /p?a=1&b=2&c=3 HTTP/1.1\r\n\r\n";
+        var raw = "GET /p?a=1&b=2&c=3 HTTP/1.1\r\nHost: x\r\n\r\n";
 
         Assert.Throws<HttpParseException>(
             () => Parse(raw, multi, limits));
@@ -134,7 +133,7 @@ public partial class HardenedParserTests
     public void AcceptsExactlyMaxQueryParamCount(bool multi)
     {
         var limits = Defaults with { MaxQueryParameterCount = 2 };
-        var raw = "GET /p?a=1&b=2 HTTP/1.1\r\n\r\n";
+        var raw = "GET /p?a=1&b=2 HTTP/1.1\r\nHost: x\r\n\r\n";
 
         var (ok, _) = Parse(raw, multi, limits);
         Assert.True(ok);
@@ -153,30 +152,5 @@ public partial class HardenedParserTests
 
         Assert.Throws<HttpParseException>(
             () => Parse(raw, multi, limits));
-    }
-
-    // ================================================================
-    // ParserLimits record
-    // ================================================================
-
-    [Fact]
-    public void DefaultLimitsHaveExpectedValues()
-    {
-        var d = ParserLimits.Default;
-        Assert.Equal(100, d.MaxHeaderCount);
-        Assert.Equal(256, d.MaxHeaderNameLength);
-        Assert.Equal(8192, d.MaxHeaderValueLength);
-        Assert.Equal(8192, d.MaxUrlLength);
-        Assert.Equal(128, d.MaxQueryParameterCount);
-        Assert.Equal(16, d.MaxMethodLength);
-        Assert.Equal(1_048_576, d.MaxTotalHeaderBytes);
-    }
-
-    [Fact]
-    public void LimitsCanBeCustomizedWithWith()
-    {
-        var custom = ParserLimits.Default with { MaxHeaderCount = 50 };
-        Assert.Equal(50, custom.MaxHeaderCount);
-        Assert.Equal(256, custom.MaxHeaderNameLength); // unchanged
     }
 }
