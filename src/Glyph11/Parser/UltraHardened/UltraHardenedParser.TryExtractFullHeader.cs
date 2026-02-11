@@ -1,25 +1,26 @@
 using System.Buffers;
+using Glyph11.Parser.Hardened;
 using Glyph11.Protocol;
 
-namespace Glyph11.Parser.Hardened;
+namespace Glyph11.Parser.UltraHardened;
 
-public static partial class HardenedParser
+public static partial class UltraHardenedParser
 {
     /// <summary>
-    /// Entry point: tries to extract a complete HTTP/1.1 header block with full validation.
+    /// Entry point: combined parse + semantic validation with full security checks.
     /// <para>
-    /// Single-segment input is dispatched to the zero-copy ROM path.
+    /// Single-segment input is dispatched to the zero-copy validated ROM path.
     /// Multi-segment input is checked for completeness (<c>\r\n\r\n</c>), then linearized
-    /// via <c>ToArray()</c> and parsed through the ROM path.
+    /// via <c>ToArray()</c> and parsed through the validated ROM path.
     /// </para>
     /// </summary>
     /// <param name="input">Input buffer from the network layer.</param>
     /// <param name="request">Target to populate with parsed request data.</param>
     /// <param name="limits">Resource limits to enforce during parsing.</param>
     /// <param name="bytesReadCount">Bytes consumed on success, or -1 if incomplete.</param>
-    /// <returns><c>true</c> if a complete header was parsed; <c>false</c> if more data is needed.</returns>
-    /// <exception cref="HttpParseException">Thrown on any protocol violation or limit breach.</exception>
-    public static bool TryExtractFullHeader(
+    /// <returns><c>true</c> if a complete header was parsed and validated; <c>false</c> if more data is needed.</returns>
+    /// <exception cref="HttpParseException">Thrown on any protocol or semantic violation.</exception>
+    public static bool TryExtractFullHeaderValidated(
         ref ReadOnlySequence<byte> input, BinaryRequest request,
         in ParserLimits limits, out int bytesReadCount)
     {

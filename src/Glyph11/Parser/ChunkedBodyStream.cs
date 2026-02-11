@@ -1,4 +1,4 @@
-namespace Glyph11.Parser.Hardened;
+namespace Glyph11.Parser;
 
 /// <summary>
 /// Result of a single <see cref="ChunkedBodyStream.TryReadChunk"/> call.
