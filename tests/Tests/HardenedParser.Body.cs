@@ -1,5 +1,5 @@
 using System.Text;
-using Glyph11;
+using Glyph11.Parser;
 using Glyph11.Parser.Hardened;
 using Glyph11.Validation;
 
@@ -15,7 +15,7 @@ public partial class HardenedParserTests
     public void DetectBodyFraming_Chunked()
     {
         ParseHeader("POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n");
-        var result = HardenedParser.DetectBodyFraming(_request);
+        var result = ParserConstants.DetectBodyFraming(_request);
 
         Assert.Equal(BodyFraming.Chunked, result.Framing);
     }
@@ -24,7 +24,7 @@ public partial class HardenedParserTests
     public void DetectBodyFraming_ContentLength()
     {
         ParseHeader("POST / HTTP/1.1\r\nContent-Length: 42\r\n\r\n");
-        var result = HardenedParser.DetectBodyFraming(_request);
+        var result = ParserConstants.DetectBodyFraming(_request);
 
         Assert.Equal(BodyFraming.ContentLength, result.Framing);
         Assert.Equal(42, result.ContentLength);
@@ -34,7 +34,7 @@ public partial class HardenedParserTests
     public void DetectBodyFraming_None()
     {
         ParseHeader("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
-        var result = HardenedParser.DetectBodyFraming(_request);
+        var result = ParserConstants.DetectBodyFraming(_request);
 
         Assert.Equal(BodyFraming.None, result.Framing);
     }
@@ -43,7 +43,7 @@ public partial class HardenedParserTests
     public void DetectBodyFraming_ContentLengthZero()
     {
         ParseHeader("POST / HTTP/1.1\r\nContent-Length: 0\r\n\r\n");
-        var result = HardenedParser.DetectBodyFraming(_request);
+        var result = ParserConstants.DetectBodyFraming(_request);
 
         Assert.Equal(BodyFraming.None, result.Framing);
     }
@@ -52,7 +52,7 @@ public partial class HardenedParserTests
     public void DetectBodyFraming_ChunkedTakesPriority()
     {
         ParseHeader("POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nContent-Length: 100\r\n\r\n");
-        var result = HardenedParser.DetectBodyFraming(_request);
+        var result = ParserConstants.DetectBodyFraming(_request);
 
         Assert.Equal(BodyFraming.Chunked, result.Framing);
     }

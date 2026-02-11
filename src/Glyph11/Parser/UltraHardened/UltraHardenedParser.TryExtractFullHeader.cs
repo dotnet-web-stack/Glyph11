@@ -1,9 +1,10 @@
 using System.Buffers;
+using Glyph11.Parser.Hardened;
 using Glyph11.Protocol;
 
-namespace Glyph11.Parser.Hardened;
+namespace Glyph11.Parser.UltraHardened;
 
-public static partial class HardenedParser
+public static partial class UltraHardenedParser
 {
     /// <summary>
     /// Entry point: combined parse + semantic validation with full security checks.
@@ -26,12 +27,12 @@ public static partial class HardenedParser
         if (input.IsSingleSegment)
         {
             ReadOnlyMemory<byte> singleMemorySegment = input.First;
-            return TryExtractFullHeaderValidatedROM(ref singleMemorySegment, request, in limits, out bytesReadCount);
+            return TryExtractFullHeaderROM(ref singleMemorySegment, request, in limits, out bytesReadCount);
         }
 
         // Check for header completeness before allocating
         var reader = new SequenceReader<byte>(input);
-        if (!reader.TryReadTo(out ReadOnlySequence<byte> _, CrlfCrlf, advancePastDelimiter: true))
+        if (!reader.TryReadTo(out ReadOnlySequence<byte> _, ParserConstants.CrlfCrlf, advancePastDelimiter: true))
         {
             bytesReadCount = -1;
             return false;
@@ -39,6 +40,6 @@ public static partial class HardenedParser
 
         // Linearize: copy all segments into a single contiguous array, then parse via ROM
         ReadOnlyMemory<byte> mem = input.ToArray();
-        return TryExtractFullHeaderValidatedROM(ref mem, request, in limits, out bytesReadCount);
+        return TryExtractFullHeaderROM(ref mem, request, in limits, out bytesReadCount);
     }
 }

@@ -13,6 +13,7 @@ public static class BenchmarkData
     {
         return Encoding.ASCII.GetBytes(
             "GET /route?p1=1&p2=2&p3=3&p4=4 HTTP/1.1\r\n" +
+            "Host: localhost\r\n" +
             "Content-Length: 100\r\n" +
             "Server: GenHTTP\r\n\r\n");
     }
@@ -25,6 +26,7 @@ public static class BenchmarkData
     {
         var sb = new StringBuilder(targetBytes + 128);
         sb.Append("GET /route?p1=1&p2=2&p3=3&p4=4 HTTP/1.1\r\n");
+        sb.Append("Host: localhost\r\n");
 
         int index = 0;
         while (sb.Length < targetBytes - 4) // leave room for final \r\n

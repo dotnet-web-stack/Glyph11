@@ -1,7 +1,9 @@
+using Glyph11.Parser.UltraHardened;
+
 namespace Glyph11.Parser.Hardened;
 
 /// <summary>
-/// Configurable resource limits for <see cref="HardenedParser"/>.
+/// Configurable resource limits for <see cref="UltraHardened.HardenedParser"/>.
 /// Every field has a safe default via <see cref="Default"/>. Customize with <c>with</c> expressions:
 /// <code>
 /// var strict = ParserLimits.Default with { MaxHeaderCount = 50 };

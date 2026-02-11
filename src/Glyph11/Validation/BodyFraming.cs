@@ -1,3 +1,5 @@
+using Glyph11.Parser.UltraHardened;
+
 namespace Glyph11.Validation;
 
 /// <summary>
@@ -16,7 +18,7 @@ public enum BodyFraming : byte
 }
 
 /// <summary>
-/// Result of <see cref="Glyph11.Parser.Hardened.HardenedParser.DetectBodyFraming"/>:
+/// Result of <see cref="HardenedParser.DetectBodyFraming"/>:
 /// the framing kind plus the content length when applicable.
 /// </summary>
 public readonly struct BodyFramingResult

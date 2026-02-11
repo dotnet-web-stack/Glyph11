@@ -31,7 +31,7 @@ public static partial class HardenedParser
 
         // Check for header completeness before allocating
         var reader = new SequenceReader<byte>(input);
-        if (!reader.TryReadTo(out ReadOnlySequence<byte> _, CrlfCrlf, advancePastDelimiter: true))
+        if (!reader.TryReadTo(out ReadOnlySequence<byte> _, ParserConstants.CrlfCrlf, advancePastDelimiter: true))
         {
             bytesReadCount = -1;
             return false;

@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using Glyph11;
+using Glyph11.Parser;
 using Glyph11.Parser.Hardened;
 using Glyph11.Protocol;
 using Glyph11.Validation;
@@ -137,7 +138,7 @@ static async Task HandleClientAsync(TcpClient client, CancellationToken ct)
                 // Copy what we need out of the pipe buffer, then release it.
                 var method = Encoding.ASCII.GetString(request.Method.Span);
                 var path = Encoding.ASCII.GetString(request.Path.Span);
-                var framing = HardenedParser.DetectBodyFraming(request);
+                var framing = ParserConstants.DetectBodyFraming(request);
 
                 // Now safe to advance past the header bytes.
                 reader.AdvanceTo(headerBuffer.GetPosition(headerByteCount));

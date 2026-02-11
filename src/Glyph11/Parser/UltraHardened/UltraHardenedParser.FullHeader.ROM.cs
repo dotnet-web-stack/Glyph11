@@ -1,9 +1,13 @@
 using System.Runtime.CompilerServices;
+using Glyph11.Parser.Hardened;
 using Glyph11.Protocol;
 
-namespace Glyph11.Parser.Hardened;
+namespace Glyph11.Parser.UltraHardened;
 
-public static partial class HardenedParser
+/// <summary>
+/// 
+/// </summary>
+public static partial class UltraHardenedParser
 {
     // ---- Semantic validation constants (TransferEncodingName, ChunkedValue
     //       and AsciiEqualsIgnoreCase live in HardenedParser.DetectBodyFraming.cs) ----
@@ -14,7 +18,7 @@ public static partial class HardenedParser
 
     /// <summary>
     /// Combined parse + semantic validation — single-segment hot path.
-    /// Equivalent to calling <see cref="TryExtractFullHeaderROM"/> followed by every
+    /// Equivalent to calling <see cref="HardenedParser.TryExtractFullHeaderROM"/> followed by every
     /// <see cref="Glyph11.Validation.RequestSemantics"/> check, but fused into one pass
     /// over headers and one pass over the path for better cache locality and throughput.
     /// <para>
@@ -23,14 +27,14 @@ public static partial class HardenedParser
     /// </para>
     /// </summary>
     [SkipLocalsInit]
-    public static bool TryExtractFullHeaderValidatedROM(
+    public static bool TryExtractFullHeaderROM(
         ref ReadOnlyMemory<byte> input, BinaryRequest request,
         in ParserLimits limits, out int bytesReadCount)
     {
         bytesReadCount = -1;
         var span = input.Span;
 
-        int headerEnd = span.IndexOf(CrlfCrlf);
+        int headerEnd = span.IndexOf(ParserConstants.CrlfCrlf);
         if (headerEnd < 0) return false;
 
         int totalHeaderBytes = headerEnd + 4;
@@ -39,7 +43,7 @@ public static partial class HardenedParser
 
         // ---- Request line: METHOD SP URL SP VERSION CRLF ----
 
-        int requestLineEnd = span.IndexOf(Crlf);
+        int requestLineEnd = span.IndexOf(ParserConstants.Crlf);
         if (requestLineEnd < 0)
             throw new HttpParseException("Invalid HTTP/1.1 request line.");
 
@@ -49,33 +53,33 @@ public static partial class HardenedParser
         if (requestLine.IndexOf((byte)'\n') >= 0)
             throw new HttpParseException("Bare LF detected; only CRLF line endings are allowed.");
 
-        int firstSpace = requestLine.IndexOf(Space);
+        int firstSpace = requestLine.IndexOf(ParserConstants.Space);
         if (firstSpace < 0)
             throw new HttpParseException("Invalid request line: missing method.");
 
-        int secondSpaceRel = requestLine[(firstSpace + 1)..].IndexOf(Space);
+        int secondSpaceRel = requestLine[(firstSpace + 1)..].IndexOf(ParserConstants.Space);
         if (secondSpaceRel < 0)
             throw new HttpParseException("Invalid request line: missing version.");
 
         int secondSpace = firstSpace + 1 + secondSpaceRel;
 
         // ---- Reject multiple spaces in request line — RFC 9112 §3 ----
-        if (secondSpace > firstSpace + 1 && requestLine[firstSpace + 1] == Space)
+        if (secondSpace > firstSpace + 1 && requestLine[firstSpace + 1] == ParserConstants.Space)
             throw new HttpParseException("Multiple spaces in request line.");
-        if (secondSpace + 1 < requestLine.Length && requestLine[secondSpace + 1] == Space)
+        if (secondSpace + 1 < requestLine.Length && requestLine[secondSpace + 1] == ParserConstants.Space)
             throw new HttpParseException("Multiple spaces in request line.");
 
         // --- Method ---
         var methodSpan = requestLine[..firstSpace];
         if (methodSpan.Length == 0 || methodSpan.Length > limits.MaxMethodLength)
             throw new HttpParseException("Method length exceeds limit.");
-        if (!IsValidToken(methodSpan))
+        if (!ParserConstants.IsValidToken(methodSpan))
             throw new HttpParseException("Method contains invalid token characters.");
 
         request.Method = input[..firstSpace];
 
         // ---- Semantic: CONNECT method — RFC 9110 §9.3.6 ----
-        if (AsciiEqualsIgnoreCase(methodSpan, ConnectMethodName))
+        if (ParserConstants.AsciiEqualsIgnoreCase(methodSpan, ConnectMethodName))
             throw new HttpParseException("CONNECT method is not allowed on origin servers.");
 
         // --- URL ---
@@ -87,18 +91,18 @@ public static partial class HardenedParser
         var urlSpan = requestLine.Slice(urlStart, urlLen);
 
         // --- Validate request-target for control characters (NUL, etc.) ---
-        if (!IsValidRequestTarget(urlSpan))
+        if (!ParserConstants.IsValidRequestTarget(urlSpan))
             throw new HttpParseException("Request-target contains invalid characters.");
 
         // --- Version ---
         var versionSpan = requestLine[(secondSpace + 1)..];
-        if (!IsValidHttpVersion(versionSpan))
+        if (!ParserConstants.IsValidHttpVersion(versionSpan))
             throw new HttpParseException("Invalid HTTP version.");
 
         request.Version = input.Slice(secondSpace + 1, versionSpan.Length);
 
         // --- Path + Query ---
-        int queryStartIndex = urlSpan.IndexOf(Question);
+        int queryStartIndex = urlSpan.IndexOf(ParserConstants.Question);
         ReadOnlySpan<byte> pathSpan;
 
         if (queryStartIndex >= 0)
@@ -116,11 +120,11 @@ public static partial class HardenedParser
             {
                 int pairAbsStart = queryAbsStart + cur;
 
-                int amp = query[cur..].IndexOf(QuerySeparator);
+                int amp = query[cur..].IndexOf(ParserConstants.QuerySeparator);
                 int pairLen = (amp < 0) ? (query.Length - cur) : amp;
 
                 var pair = query.Slice(cur, pairLen);
-                int eq = pair.IndexOf(Equal);
+                int eq = pair.IndexOf(ParserConstants.Equal);
 
                 if (eq > 0)
                 {
@@ -147,7 +151,7 @@ public static partial class HardenedParser
         // ---- Semantic: asterisk-form — RFC 9112 §3.2.4 ----
         if (pathSpan.Length == 1 && pathSpan[0] == (byte)'*')
         {
-            if (!AsciiEqualsIgnoreCase(methodSpan, OptionsMethodName))
+            if (!ParserConstants.AsciiEqualsIgnoreCase(methodSpan, OptionsMethodName))
                 throw new HttpParseException("Asterisk-form request-target is only valid for OPTIONS.");
         }
 
@@ -164,7 +168,7 @@ public static partial class HardenedParser
 
         while (true)
         {
-            int lineLen = span[lineStart..].IndexOf(Crlf);
+            int lineLen = span[lineStart..].IndexOf(ParserConstants.Crlf);
             if (lineLen < 0)
                 throw new HttpParseException("Invalid headers.");
 
@@ -181,7 +185,7 @@ public static partial class HardenedParser
             if (line[0] == (byte)' ' || line[0] == (byte)'\t')
                 throw new HttpParseException("Obsolete line folding (obs-fold) is not allowed.");
 
-            int colon = line.IndexOf(Colon);
+            int colon = line.IndexOf(ParserConstants.Colon);
 
             if (colon <= 0)
                 throw new HttpParseException(colon == 0
@@ -196,7 +200,7 @@ public static partial class HardenedParser
             var nameSpan = line[..colon];
             if (nameSpan.Length > limits.MaxHeaderNameLength)
                 throw new HttpParseException("Header name length exceeds limit.", statusCode: 431);
-            if (!IsValidToken(nameSpan))
+            if (!ParserConstants.IsValidToken(nameSpan))
                 throw new HttpParseException("Header name contains invalid token characters.");
 
             // Trim leading OWS from value
@@ -214,7 +218,7 @@ public static partial class HardenedParser
             var valueSpan = span.Slice(valAbsStart, valLen);
             if (valLen > limits.MaxHeaderValueLength)
                 throw new HttpParseException("Header value length exceeds limit.", statusCode: 431);
-            if (!IsValidFieldValue(valueSpan))
+            if (!ParserConstants.IsValidFieldValue(valueSpan))
                 throw new HttpParseException("Header value contains invalid characters.");
 
             if (++headerCount > limits.MaxHeaderCount)
@@ -227,7 +231,7 @@ public static partial class HardenedParser
             // ---- Inline semantic checks keyed by header name ----
             // Length pre-check avoids the full case-insensitive compare for most headers.
 
-            if (nameSpan.Length == 14 && AsciiEqualsIgnoreCase(nameSpan, ContentLengthName))
+            if (nameSpan.Length == 14 && ParserConstants.AsciiEqualsIgnoreCase(nameSpan, ContentLengthName))
             {
                 // RFC 9110 §8.6 — validate format (syntax, leading zeros, overflow)
                 if (!SemIsValidContentLengthValue(valueSpan))
@@ -249,16 +253,16 @@ public static partial class HardenedParser
                     hasCL = true;
                 }
             }
-            else if (nameSpan.Length == 17 && AsciiEqualsIgnoreCase(nameSpan, TransferEncodingName))
+            else if (nameSpan.Length == 17 && ParserConstants.AsciiEqualsIgnoreCase(nameSpan, ParserConstants.TransferEncodingName))
             {
                 hasTE = true;
 
                 // RFC 9112 §6.1 — only "chunked" is accepted
                 var trimmed = SemTrimOWS(valueSpan);
-                if (!AsciiEqualsIgnoreCase(trimmed, ChunkedValue))
+                if (!ParserConstants.AsciiEqualsIgnoreCase(trimmed, ParserConstants.ChunkedValue))
                     throw new HttpParseException("Invalid Transfer-Encoding value; only 'chunked' is accepted.");
             }
-            else if (nameSpan.Length == 4 && AsciiEqualsIgnoreCase(nameSpan, HostHeaderName))
+            else if (nameSpan.Length == 4 && ParserConstants.AsciiEqualsIgnoreCase(nameSpan, HostHeaderName))
             {
                 hostCount++;
 

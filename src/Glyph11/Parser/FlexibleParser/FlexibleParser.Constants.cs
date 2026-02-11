@@ -1,6 +1,7 @@
 // ReSharper disable SuggestVarOrType_BuiltInTypes
 
 using System.Runtime.CompilerServices;
+using Glyph11.Parser.UltraHardened;
 
 namespace Glyph11.Parser.FlexibleParser;
 
@@ -9,7 +10,7 @@ namespace Glyph11.Parser.FlexibleParser;
 /// Optimized for throughput; silently skips malformed header lines
 /// and does not enforce RFC token/field-value rules.
 /// <para>
-/// For security-sensitive workloads, use <see cref="Hardened.HardenedParser"/> instead.
+/// For security-sensitive workloads, use <see cref="HardenedParser"/> instead.
 /// </para>
 /// </summary>
 [SkipLocalsInit]
