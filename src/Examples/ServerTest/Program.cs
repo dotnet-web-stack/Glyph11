@@ -138,7 +138,7 @@ static async Task HandleClientAsync(TcpClient client, CancellationToken ct)
                 // Copy what we need out of the pipe buffer, then release it.
                 var method = Encoding.ASCII.GetString(request.Method.Span);
                 var path = Encoding.ASCII.GetString(request.Path.Span);
-                var framing = ParserConstants.DetectBodyFraming(request);
+                var framing = BodyFramingDetector.DetectBodyFraming(request);
 
                 // Now safe to advance past the header bytes.
                 reader.AdvanceTo(headerBuffer.GetPosition(headerByteCount));
