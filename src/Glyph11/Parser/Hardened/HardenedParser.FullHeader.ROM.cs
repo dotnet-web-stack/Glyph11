@@ -112,6 +112,15 @@ public static partial class HardenedParser
                         input.Slice(pairAbsStart, eq),
                         input.Slice(pairAbsStart + eq + 1, pairLen - (eq + 1)));
                 }
+                else if (eq < 0 && pairLen > 0)
+                {
+                    if (++paramCount > limits.MaxQueryParameterCount)
+                        throw new HttpParseException("Query parameter count exceeds limit.", statusCode: 431);
+
+                    request.QueryParameters.Add(
+                        input.Slice(pairAbsStart, pairLen),
+                        ReadOnlyMemory<byte>.Empty);
+                }
 
                 cur += pairLen + (amp < 0 ? 0 : 1);
             }

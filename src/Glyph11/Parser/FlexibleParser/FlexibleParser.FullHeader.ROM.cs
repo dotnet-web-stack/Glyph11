@@ -67,6 +67,12 @@ public static partial class FlexibleParser
                         input.Slice(pairAbsStart, eq),
                         input.Slice(pairAbsStart + eq + 1, pairLen - (eq + 1)));
                 }
+                else if (eq < 0 && pairLen > 0)
+                {
+                    request.QueryParameters.Add(
+                        input.Slice(pairAbsStart, pairLen),
+                        ReadOnlyMemory<byte>.Empty);
+                }
 
                 cur += pairLen + (amp < 0 ? 0 : 1);
             }
