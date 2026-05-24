@@ -163,6 +163,19 @@ public partial class UltraHardenedParserTests
         AssertQueryParam(_request.QueryParameters, 0, "key", "");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ParsesQueryParamWithoutValue(bool multi)
+    {
+        var (ok, _) = Parse("GET /p?ok=1&flag&also=2 HTTP/1.1\r\nHost: localhost\r\n\r\n", multi);
+        Assert.True(ok);
+        Assert.Equal(3, _request.QueryParameters.Count);
+        AssertQueryParam(_request.QueryParameters, 0, "ok", "1");
+        AssertQueryParam(_request.QueryParameters, 1, "flag", "");
+        AssertQueryParam(_request.QueryParameters, 2, "also", "2");
+    }
+
     // ================================================================
     // Header field parsing
     // ================================================================

@@ -238,13 +238,14 @@ public class FlexibleParserHeaderCompliance : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void SkipsQueryParamWithoutEqualsSign(bool multi)
+    public void ParsesQueryParamWithoutValue(bool multi)
     {
-        var (ok, _) = Parse("GET /p?ok=1&bad&also=2 HTTP/1.1\r\n\r\n", multi);
+        var (ok, _) = Parse("GET /p?ok=1&flag&also=2 HTTP/1.1\r\n\r\n", multi);
         Assert.True(ok);
-        Assert.Equal(2, _request.QueryParameters.Count);
+        Assert.Equal(3, _request.QueryParameters.Count);
         AssertQueryParam(_request.QueryParameters, 0, "ok", "1");
-        AssertQueryParam(_request.QueryParameters, 1, "also", "2");
+        AssertQueryParam(_request.QueryParameters, 1, "flag", "");
+        AssertQueryParam(_request.QueryParameters, 2, "also", "2");
     }
 
     // ----------------------------------------------------------------
