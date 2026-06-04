@@ -11,6 +11,9 @@ import java.lang.invoke.MethodHandle
 /** A byte range (offset + length) into the parsed input buffer (zero-copy). */
 data class Glyph11Span(val offset: Int, val length: Int)
 
+/** A parsed name/value pair (header or query parameter); spans index into the input. */
+data class Glyph11Field(val name: Glyph11Span, val value: Glyph11Span)
+
 /** Parsed request fields. Spans index into the input passed to [Glyph11.parse]. */
 data class Glyph11Result(
     val status: Int,
@@ -18,12 +21,14 @@ data class Glyph11Result(
     val target: Glyph11Span,
     val path: Glyph11Span,
     val version: Glyph11Span,
-    val headerCount: Int,
-    val queryCount: Int,
+    val headers: List<Glyph11Field>,
+    val query: List<Glyph11Field>,
     val consumed: Long,
 ) {
     val isOk: Boolean get() = status == 0
     val isIncomplete: Boolean get() = status == 1
+    val headerCount: Int get() = headers.size
+    val queryCount: Int get() = query.size
 }
 
 /**
@@ -105,6 +110,14 @@ object Glyph11 {
 
             fun span(off: Long) =
                 Glyph11Span(req.get(ValueLayout.JAVA_INT, off), req.get(ValueLayout.JAVA_INT, off + 4))
+            fun fields(seg: MemorySegment, count: Int): List<Glyph11Field> =
+                (0 until count).map { i ->
+                    val b = i.toLong() * SIZEOF_FIELD
+                    Glyph11Field(
+                        Glyph11Span(seg.get(ValueLayout.JAVA_INT, b), seg.get(ValueLayout.JAVA_INT, b + 4)),
+                        Glyph11Span(seg.get(ValueLayout.JAVA_INT, b + 8), seg.get(ValueLayout.JAVA_INT, b + 12)),
+                    )
+                }
 
             return Glyph11Result(
                 status = status,
@@ -112,8 +125,8 @@ object Glyph11 {
                 target = span(8L),
                 path = span(16L),
                 version = span(24L),
-                headerCount = req.get(ValueLayout.JAVA_INT, OFF_HEADER_COUNT),
-                queryCount = req.get(ValueLayout.JAVA_INT, OFF_QUERY_COUNT),
+                headers = if (status == 0) fields(headers, req.get(ValueLayout.JAVA_INT, OFF_HEADER_COUNT)) else emptyList(),
+                query = if (status == 0) fields(query, req.get(ValueLayout.JAVA_INT, OFF_QUERY_COUNT)) else emptyList(),
                 consumed = if (status == 0) consumed.get(ValueLayout.JAVA_LONG, 0L) else 0L,
             )
         }

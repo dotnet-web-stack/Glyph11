@@ -43,6 +43,7 @@ private fun smoke() {
     check("path", slice(valid, r.path) == "/api/users")
     check("version", slice(valid, r.version) == "HTTP/1.1")
     check("headerCount", r.headerCount == 2)
+    check("header name/value", r.headers[0].let { slice(valid, it.name) == "Host" && slice(valid, it.value) == "example.com" })
     check("queryCount", r.queryCount == 2)
     check("consumed", r.consumed.toInt() == valid.size)
 
