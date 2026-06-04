@@ -1,47 +1,55 @@
 {
   "unit": "ns/op",
+  "generated": "2026-06-04 18:25 UTC",
   "langs": [
+    {
+      "key": "dotnet-managed-rom",
+      "label": "C# Ultra (ROM)"
+    },
+    {
+      "key": "dotnet-managed-multiseg",
+      "label": "C# Ultra (multi-seg)"
+    },
     {
       "key": "pure-c",
       "label": "Pure C"
     },
     {
       "key": "dotnet-ffi",
-      "label": "C# (FFI)"
+      "label": "C# binding (FFI)"
     },
     {
       "key": "kotlin-ffi",
-      "label": "Kotlin (FFI)"
-    },
-    {
-      "key": "dotnet-managed",
-      "label": "C# managed (ref)"
+      "label": "Kotlin binding (FFI)"
     }
   ],
   "rows": [
     {
       "payload": "small",
       "label": "~95 B",
-      "pure-c": 182.6,
-      "dotnet-ffi": 169.2,
-      "kotlin-ffi": 181.7,
-      "dotnet-managed": 266.9
+      "dotnet-managed-rom": 433.2,
+      "dotnet-managed-multiseg": 498.2,
+      "pure-c": 172.1,
+      "dotnet-ffi": 168.0,
+      "kotlin-ffi": 170.0
     },
     {
       "payload": "4k",
       "label": "4 KB",
-      "pure-c": 1026.9,
-      "dotnet-ffi": 988.8,
-      "kotlin-ffi": 997.7,
-      "dotnet-managed": 1183.0
+      "dotnet-managed-rom": 1085.8,
+      "dotnet-managed-multiseg": 2066.0,
+      "pure-c": 968.5,
+      "dotnet-ffi": 918.4,
+      "kotlin-ffi": 938.1
     },
     {
       "payload": "32k",
       "label": "32 KB",
-      "pure-c": 8213.0,
-      "dotnet-ffi": 8019.8,
-      "kotlin-ffi": 5825.1,
-      "dotnet-managed": 8387.8
+      "dotnet-managed-rom": 7452.1,
+      "dotnet-managed-multiseg": 13638.7,
+      "pure-c": 7887.9,
+      "dotnet-ffi": 7445.0,
+      "kotlin-ffi": 5476.9
     }
   ]
 }
