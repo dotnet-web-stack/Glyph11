@@ -1,100 +1,121 @@
 # Glyph11
 
-Glyph11 is a dependency free, low allocation HTTP/1.1 parser for C#. It does not rely on any specific network technology but can be used with any (such as `Socket`, `NetworkStream`, `PipeReader` or anything else).
+A zero-allocation, hardened HTTP/1.1 request parser — a pure-C# library and a C core
+(`libglyph11`) reachable from .NET and the JVM. RFC 9110/9112 validation, configurable
+resource limits, and request-smuggling / semantic checks fused into a single zero-copy pass.
 
-![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-512bd4)
 [![NuGet](https://img.shields.io/nuget/v/Glyph11.svg)](https://www.nuget.org/packages/Glyph11/)
+![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-512bd4)
 [![Benchmarks](https://img.shields.io/badge/benchmarks-live-blue)](https://dotnet-web-stack.github.io/Glyph11/)
-[![Coverage](https://img.shields.io/sonar/coverage/MDA2AV_Glyph11?server=https%3A%2F%2Fsonarcloud.io)](https://sonarcloud.io/summary/new_code?id=MDA2AV_Glyph11)
-[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=MDA2AV_Glyph11&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=MDA2AV_Glyph11)
 
-## Usage
+Three ways to use the same hardened parser:
 
-Glyph11 works with any source that produces a `ReadOnlySequence<byte>` or `ReadOnlyMemory<byte>` — `PipeReader`, `Socket`, `NetworkStream`, or raw byte arrays.
+| | What | Header storage |
+|---|---|---|
+| **C# library** | pure managed `UltraHardenedParser` | pooled, internal |
+| **.NET binding** | the C core via P/Invoke | caller-provided (zero-alloc) |
+| **Kotlin binding** | the C core via Panama FFM | per-call, returned as a list |
+
+## C# library (managed)
 
 ```csharp
 using System.Buffers;
+using System.Text;
 using Glyph11.Protocol;
 using Glyph11.Parser;
 using Glyph11.Parser.UltraHardened;
 
 var request = new BinaryRequest();
-var limits = ParserLimits.Default;
+var limits  = ParserLimits.Default;
 
-ReadOnlySequence<byte> buffer = ...; // from any network source
+// From any source that yields a ReadOnlySequence<byte> (PipeReader, Socket, NetworkStream, …)
+ReadOnlySequence<byte> buffer = new(Encoding.ASCII.GetBytes(
+    "GET /api/users?page=1 HTTP/1.1\r\nHost: example.com\r\nAccept: */*\r\n\r\n"));
 
-// UltraHardenedParser fuses structural parsing, resource limits, and every
-// semantic check (smuggling, traversal, Host rules, ...) into one pass.
-// It throws HttpParseException on any protocol or semantic violation.
 if (UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in limits, out int bytesRead))
 {
-    // All parsed fields are zero-copy slices into the original buffer:
-    // request.Method.Span  → e.g. "GET"
-    // request.Path.Span    → e.g. "/api/users"
-    // request.Version.Span → e.g. "HTTP/1.1"
-    // request.Headers      → KeyValueList of name/value pairs
-    // request.QueryParameters → KeyValueList of query params
+    Console.WriteLine(Encoding.ASCII.GetString(request.Method.Span)); // GET
+    Console.WriteLine(Encoding.ASCII.GetString(request.Path.Span));   // /api/users
 
-    // The request is fully validated — safe to process.
-    // Then advance your reader by bytesRead.
+    for (int i = 0; i < request.Headers.Count; i++)
+    {
+        var (name, value) = request.Headers[i];                       // zero-copy slices
+        Console.WriteLine($"{Encoding.ASCII.GetString(name.Span)}: {Encoding.ASCII.GetString(value.Span)}");
+    }
 
-    // Reuse between requests — clear instead of reallocating:
-    request.Headers.Clear();
-    request.QueryParameters.Clear();
+    // advance your reader by bytesRead; reuse `request` across calls (request.Clear()).
+}
+// throws HttpParseException on a protocol/semantic violation; returns false if incomplete.
+```
+
+`TryExtractFullHeaderROM(ref ReadOnlyMemory<byte>, …)` is the single-buffer (contiguous) fast path.
+`FlexibleParser` is a minimal-validation variant for trusted, pre-validated input.
+
+## .NET binding (C core via P/Invoke)
+
+Calls `libglyph11` directly — same validation, native speed, **zero allocation** (you provide the
+header/query storage).
+
+```csharp
+using System.Text;
+using Glyph11.Native;
+
+byte[] request = Encoding.ASCII.GetBytes(
+    "GET /api/users?page=1 HTTP/1.1\r\nHost: example.com\r\nAccept: */*\r\n\r\n");
+
+Span<Glyph11Field> headers = stackalloc Glyph11Field[64];
+Span<Glyph11Field> query   = stackalloc Glyph11Field[32];
+
+int status = Glyph11Parser.Parse(request, headers, query, Glyph11Limits.Default, out var r);
+if (status == Glyph11Parser.Ok)
+{
+    string Slice(Glyph11Span s) => Encoding.ASCII.GetString(request, (int)s.Offset, (int)s.Length);
+
+    Console.WriteLine(Slice(r.Method)); // GET
+    Console.WriteLine(Slice(r.Path));   // /api/users
+
+    for (int i = 0; i < r.HeaderCount; i++)
+        Console.WriteLine($"{Slice(headers[i].Name)}: {Slice(headers[i].Value)}");
+}
+// status: 0 = OK, 1 = incomplete (read more), otherwise a protocol/limit error (→ HTTP 400 / 431).
+```
+
+Resolve the native library with the `GLYPH11_NATIVE_PATH` environment variable, or put
+`libglyph11.{so,dll,dylib}` on the OS load path.
+
+## Kotlin / JVM binding (C core via Panama FFM)
+
+```kotlin
+import io.glyph11.Glyph11
+import io.glyph11.Glyph11Span
+
+val request = "GET /api/users?page=1 HTTP/1.1\r\nHost: example.com\r\nAccept: */*\r\n\r\n"
+    .toByteArray(Charsets.ISO_8859_1)
+
+val r = Glyph11.parse(request)
+when {
+    r.isOk -> {
+        fun slice(s: Glyph11Span) = String(request, s.offset, s.length, Charsets.ISO_8859_1)
+        println(slice(r.method))                     // GET
+        println(slice(r.path))                       // /api/users
+        for (h in r.headers)
+            println("${slice(h.name)}: ${slice(h.value)}")
+    }
+    r.isIncomplete -> { /* read more bytes */ }
+    else -> println("rejected → HTTP ${Glyph11.httpCode(r.status)}")  // 400 / 431
 }
 ```
 
-Glyph11 plugs into a `PipeReader` loop: read a buffer, call `TryExtractFullHeaderValidated`, advance the reader by `bytesRead`, and repeat.
+Requires JDK 21+ (FFM). Point at the library with `-Dglyph11.lib=/path/to/libglyph11.so`.
 
-## Parsers
+## Benchmarks
 
-Glyph11 ships two parsers:
+Live cross-language numbers — managed vs. the C core and its .NET / JVM bindings, contiguous and
+multi-segment: **<https://dotnet-web-stack.github.io/Glyph11/>**
 
-- **`UltraHardenedParser`** — RFC 9110/9112 compliant with full validation, configurable resource limits, and every smuggling/semantic check fused into the parse pass. Recommended for internet-facing applications.
-- **`FlexibleParser`** — Minimal validation for maximum throughput. Suitable for trusted environments where input is pre-validated.
+## Build the native core (for the bindings)
 
-## Performance
-
-- **ROM path is zero-allocation** — no GC pressure regardless of request size
-- **SIMD-accelerated validation** keeps the `UltraHardenedParser` within a small constant factor of the unvalidated `FlexibleParser`
-- **Multi-segment linearization** provides ROM-speed parsing with a single upfront allocation
-
-See the [live benchmarks](https://dotnet-web-stack.github.io/Glyph11/) — the managed parser vs. the C core and its .NET (P/Invoke) and JVM (Panama FFM) bindings, contiguous and multi-segment.
-
-## CI Workflows
-
-### Benchmarks
-
-The **Benchmark** workflow (`.github/workflows/benchmark.yml`) measures parser throughput and allocation using BenchmarkDotNet.
-
-| Trigger | Job | What it does |
-|---------|-----|--------------|
-| `pull_request` | **Parser Benchmarks** | Runs `FlexibleParserBenchmark` and `UltraHardenedParserBenchmark`, compares against the baseline on `gh-pages`, and posts a comment on the PR. Fails if any metric regresses by more than 15%. |
-| `workflow_dispatch` | **Full Benchmarks** | Runs all benchmarks (parsers + `AllSemanticChecksBenchmark`) and updates the baseline on `gh-pages`. |
-
-**Data flow:** benchmark results are stored as `benchmarks/data.js` on the `gh-pages` branch.
-
-> The cross-language comparison on the [live site](https://dotnet-web-stack.github.io/Glyph11/) is produced separately by the **Cross-Language Benchmark** workflow (`.github/workflows/cross-bench.yml`), which benchmarks the C core, both bindings, and the managed parser, then publishes `benchmarks/cross-lang.json` to `gh-pages`.
-
-To publish updated benchmark data:
-
-1. Merge your changes to `main`.
-2. Go to **Actions > Benchmark > Run workflow** on `main`.
-
-### Compliance Probe
-
-The **Probe** workflow (`.github/workflows/probe.yml`) tests HTTP/1.1 compliance across multiple server frameworks using [Glyph11.Probe](src/Glyph11.Probe), a tool that sends malformed and ambiguous HTTP requests and checks the server's response against strict RFC 9110/9112 expectations.
-
-Servers tested: **Glyph11** (raw TCP + UltraHardenedParser), **Kestrel** (ASP.NET Core), **Flask** (Python), **Express** (Node.js), **Spring Boot** (Java), **Quarkus** (Java), **Nancy** (.NET), **Jetty** (Java), **Nginx** (native), **Apache** (native), **Caddy** (native), **Pingora** (Rust).
-
-| Trigger | What it does |
-|---------|--------------|
-| `pull_request` | Starts all three servers, probes each one, evaluates results with strict status-code matching (e.g. a parser error must return `400`, not `404`), and posts a comparison table as a PR comment. Never fails the build — this is informational. |
-| `workflow_dispatch` | Same as above, plus pushes `probe/data.js` to `gh-pages`. |
-
-**Data flow:** probe results are stored as `probe/data.js` on the `gh-pages` branch.
-
-To publish updated probe data:
-
-1. Merge your changes to `main`.
-2. Go to **Actions > Probe > Run workflow** on `main`.
+```sh
+cmake -S core -B core/build-rel -DGLYPH11_BUILD_TESTS=OFF
+cmake --build core/build-rel     # → core/build-rel/libglyph11.{so,dll,dylib}
+```

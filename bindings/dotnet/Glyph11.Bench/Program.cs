@@ -117,21 +117,24 @@ internal static class CsvBench
             var data = File.ReadAllBytes(Path.Combine(dir, file));
             var rom = (ReadOnlyMemory<byte>)data;
             var seq = ThreeSegments(data);
+            var lin = new byte[data.Length]; // reused linearization buffer (no per-call allocation)
 
             // managed — ROM (single contiguous buffer)
             double mRom = Best(iters, () => { req.Clear(); var r = rom; UltraHardenedParser.TryExtractFullHeaderROM(ref r, req, in ManagedLimits, out _); });
             Console.WriteLine($"dotnet-managed-rom,{name},{mRom:F1}");
 
-            // managed — multi-segment (3 segments, linearized internally)
-            double mSeg = Best(iters, () => { req.Clear(); var s = seq; UltraHardenedParser.TryExtractFullHeaderValidated(ref s, req, in ManagedLimits, out _); });
+            // managed — multi-segment: linearize into the SAME reused buffer as the native paths,
+            // then ROM-parse, so the column compares the parser, not the linearization strategy.
+            // (The one-shot API TryExtractFullHeaderValidated would input.ToArray() instead — an
+            // allocation per request; that's an API cost, noted on the page/README, not here.)
+            double mSeg = Best(iters, () => { req.Clear(); seq.CopyTo(lin); ReadOnlyMemory<byte> r = lin; UltraHardenedParser.TryExtractFullHeaderROM(ref r, req, in ManagedLimits, out _); });
             Console.WriteLine($"dotnet-managed-multiseg,{name},{mSeg:F1}");
 
             // native binding (FFI) — contiguous
             double ffi = Best(iters, () => Glyph11Parser.Parse(data, h, q, NativeLimits, out _));
             Console.WriteLine($"dotnet-ffi,{name},{ffi:F1}");
 
-            // native binding (FFI) — multi-segment: linearize into a reused buffer, then parse
-            var lin = new byte[data.Length];
+            // native binding (FFI) — multi-segment: same reused-buffer linearization, then parse
             double ffiSeg = Best(iters, () => { seq.CopyTo(lin); Glyph11Parser.Parse(lin, h, q, NativeLimits, out _); });
             Console.WriteLine($"dotnet-ffi-multiseg,{name},{ffiSeg:F1}");
         }
