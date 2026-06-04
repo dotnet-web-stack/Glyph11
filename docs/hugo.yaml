@@ -2,6 +2,11 @@ baseURL: https://MDA2AV.github.io/Glyph11/
 languageCode: en-us
 title: Glyph11
 
+# Hextra v0.11.1's RSS template (list.rss.xml) references .Site.Author, which
+# Hugo removed in v0.158. We don't publish an RSS feed for the docs, so disable
+# RSS output entirely — this avoids the broken template regardless of Hugo version.
+disableKinds: ["RSS"]
+
 module:
   imports:
     - path: github.com/imfing/hextra
