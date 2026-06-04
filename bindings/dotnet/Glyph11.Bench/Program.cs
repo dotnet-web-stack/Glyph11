@@ -119,27 +119,34 @@ internal static class CsvBench
             var seq = ThreeSegments(data);
 
             // managed — ROM (single contiguous buffer)
-            for (long i = 0; i < iters / 10 + 1; i++) { req.Clear(); var r = rom; UltraHardenedParser.TryExtractFullHeaderROM(ref r, req, in ManagedLimits, out _); }
-            var sw = Stopwatch.StartNew();
-            for (long i = 0; i < iters; i++) { req.Clear(); var r = rom; UltraHardenedParser.TryExtractFullHeaderROM(ref r, req, in ManagedLimits, out _); }
-            sw.Stop();
-            Console.WriteLine($"dotnet-managed-rom,{name},{sw.Elapsed.TotalNanoseconds / iters:F1}");
+            double mRom = Best(iters, () => { req.Clear(); var r = rom; UltraHardenedParser.TryExtractFullHeaderROM(ref r, req, in ManagedLimits, out _); });
+            Console.WriteLine($"dotnet-managed-rom,{name},{mRom:F1}");
 
             // managed — multi-segment (3 segments, linearized internally)
-            for (long i = 0; i < iters / 10 + 1; i++) { req.Clear(); var s = seq; UltraHardenedParser.TryExtractFullHeaderValidated(ref s, req, in ManagedLimits, out _); }
-            sw = Stopwatch.StartNew();
-            for (long i = 0; i < iters; i++) { req.Clear(); var s = seq; UltraHardenedParser.TryExtractFullHeaderValidated(ref s, req, in ManagedLimits, out _); }
-            sw.Stop();
-            Console.WriteLine($"dotnet-managed-multiseg,{name},{sw.Elapsed.TotalNanoseconds / iters:F1}");
+            double mSeg = Best(iters, () => { req.Clear(); var s = seq; UltraHardenedParser.TryExtractFullHeaderValidated(ref s, req, in ManagedLimits, out _); });
+            Console.WriteLine($"dotnet-managed-multiseg,{name},{mSeg:F1}");
 
             // native binding (FFI)
-            for (long i = 0; i < iters / 10 + 1; i++) Glyph11Parser.Parse(data, h, q, NativeLimits, out _);
-            sw = Stopwatch.StartNew();
-            for (long i = 0; i < iters; i++) Glyph11Parser.Parse(data, h, q, NativeLimits, out _);
-            sw.Stop();
-            Console.WriteLine($"dotnet-ffi,{name},{sw.Elapsed.TotalNanoseconds / iters:F1}");
+            double ffi = Best(iters, () => Glyph11Parser.Parse(data, h, q, NativeLimits, out _));
+            Console.WriteLine($"dotnet-ffi,{name},{ffi:F1}");
         }
         req.Dispose();
+    }
+
+    // best of N timed trials (after warmup) — filters scheduling / turbo interference
+    private static double Best(long iters, Action body)
+    {
+        for (long i = 0; i < iters / 10 + 1; i++) body();
+        double best = double.MaxValue;
+        for (int t = 0; t < 5; t++)
+        {
+            var sw = Stopwatch.StartNew();
+            for (long i = 0; i < iters; i++) body();
+            sw.Stop();
+            var ns = sw.Elapsed.TotalNanoseconds / iters;
+            if (ns < best) best = ns;
+        }
+        return best;
     }
 
     private static ReadOnlySequence<byte> ThreeSegments(byte[] d)

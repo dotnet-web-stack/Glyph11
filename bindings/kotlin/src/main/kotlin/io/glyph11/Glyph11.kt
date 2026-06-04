@@ -158,11 +158,16 @@ object Glyph11 {
 
             var w = 0L
             while (w < iters / 10 + 1) { once(); w++ } // warmup (also lets the JIT compile)
-            val t0 = System.nanoTime()
-            var i = 0L
-            while (i < iters) { once(); i++ }
-            val t1 = System.nanoTime()
-            return (t1 - t0).toDouble() / iters
+            var best = Double.MAX_VALUE // best of N trials filters scheduling / turbo interference
+            for (trial in 0 until 5) {
+                val t0 = System.nanoTime()
+                var i = 0L
+                while (i < iters) { once(); i++ }
+                val t1 = System.nanoTime()
+                val ns = (t1 - t0).toDouble() / iters
+                if (ns < best) best = ns
+            }
+            return best
         }
     }
 }
