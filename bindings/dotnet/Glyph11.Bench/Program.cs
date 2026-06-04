@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Engines;
@@ -7,6 +8,14 @@ using Glyph11.Native;
 using Glyph11.Parser;
 using Glyph11.Parser.UltraHardened;
 using Glyph11.Protocol;
+
+// `csv <payload-dir>` emits CSV (dotnet-managed / dotnet-ffi) for the cross-language
+// aggregator, using the shared payload files. Default: the rich BenchmarkDotNet run.
+if (args.Length >= 1 && args[0] == "csv")
+{
+    CsvBench.Run(args.Length > 1 ? args[1] : ".");
+    return;
+}
 
 BenchmarkRunner.Run<ParserComparison>();
 
@@ -73,5 +82,51 @@ public class ParserComparison
         }
         sb.Append("\r\n");
         return Encoding.ASCII.GetBytes(sb.ToString());
+    }
+}
+
+// Consistent manual-timing harness (warmup + timed loop) matching the pure-C and
+// Kotlin benches, so the four series are directly comparable in one table.
+internal static class CsvBench
+{
+    private static readonly ParserLimits ManagedLimits =
+        ParserLimits.Default with { MaxTotalHeaderBytes = 64 * 1024, MaxHeaderCount = 200 };
+
+    private static readonly Glyph11Limits NativeLimits = new()
+    {
+        StructSize = 32, MaxHeaderCount = 200, MaxHeaderNameLength = 256,
+        MaxHeaderValueLength = 8192, MaxUrlLength = 8192, MaxQueryParameterCount = 128,
+        MaxMethodLength = 16, MaxTotalHeaderBytes = 64 * 1024,
+    };
+
+    public static void Run(string dir)
+    {
+        var req = new BinaryRequest();
+        var h = new Glyph11Field[256];
+        var q = new Glyph11Field[256];
+        (string name, string file, long iters)[] cases =
+        {
+            ("small", "small.bin", 2_000_000),
+            ("4k", "h4k.bin", 500_000),
+            ("32k", "h32k.bin", 100_000),
+        };
+        foreach (var (name, file, iters) in cases)
+        {
+            var data = File.ReadAllBytes(Path.Combine(dir, file));
+            var rom = (ReadOnlyMemory<byte>)data;
+
+            for (long i = 0; i < iters / 10 + 1; i++) { req.Clear(); var r = rom; UltraHardenedParser.TryExtractFullHeaderROM(ref r, req, in ManagedLimits, out _); }
+            var sw = Stopwatch.StartNew();
+            for (long i = 0; i < iters; i++) { req.Clear(); var r = rom; UltraHardenedParser.TryExtractFullHeaderROM(ref r, req, in ManagedLimits, out _); }
+            sw.Stop();
+            Console.WriteLine($"dotnet-managed,{name},{sw.Elapsed.TotalNanoseconds / iters:F1}");
+
+            for (long i = 0; i < iters / 10 + 1; i++) Glyph11Parser.Parse(data, h, q, NativeLimits, out _);
+            sw = Stopwatch.StartNew();
+            for (long i = 0; i < iters; i++) Glyph11Parser.Parse(data, h, q, NativeLimits, out _);
+            sw.Stop();
+            Console.WriteLine($"dotnet-ffi,{name},{sw.Elapsed.TotalNanoseconds / iters:F1}");
+        }
+        req.Dispose();
     }
 }

@@ -118,4 +118,38 @@ object Glyph11 {
             )
         }
     }
+
+    /**
+     * Benchmark helper: parse [input] [iters] times reusing off-heap buffers
+     * (no per-call allocation), returning ns/op. Isolates parse + FFM-call cost
+     * for a fair cross-language comparison; the public [parse] allocates an
+     * Arena per call for convenience.
+     */
+    fun benchParse(input: ByteArray, iters: Long): Double {
+        Arena.ofConfined().use { arena ->
+            val buf = arena.allocate(maxOf(input.size, 1).toLong())
+            MemorySegment.copy(input, 0, buf, ValueLayout.JAVA_BYTE, 0L, input.size)
+            val headers = arena.allocate(SIZEOF_FIELD * CAPACITY)
+            val query = arena.allocate(SIZEOF_FIELD * CAPACITY)
+            val req = arena.allocate(SIZEOF_REQUEST)
+            val consumed = arena.allocate(ValueLayout.JAVA_LONG)
+            val len = input.size.toLong()
+
+            fun once() {
+                req.set(ValueLayout.ADDRESS, OFF_HEADERS, headers)
+                req.set(ValueLayout.JAVA_INT, OFF_HEADER_CAP, CAPACITY)
+                req.set(ValueLayout.ADDRESS, OFF_QUERY, query)
+                req.set(ValueLayout.JAVA_INT, OFF_QUERY_CAP, CAPACITY)
+                parseHandle.invoke(buf, len, MemorySegment.NULL, req, consumed)
+            }
+
+            var w = 0L
+            while (w < iters / 10 + 1) { once(); w++ } // warmup (also lets the JIT compile)
+            val t0 = System.nanoTime()
+            var i = 0L
+            while (i < iters) { once(); i++ }
+            val t1 = System.nanoTime()
+            return (t1 - t0).toDouble() / iters
+        }
+    }
 }
