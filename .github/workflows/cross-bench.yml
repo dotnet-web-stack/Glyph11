@@ -1,0 +1,65 @@
+name: Cross-Language Benchmark
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: cross-bench
+  cancel-in-progress: false
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0
+
+      - name: Setup Java (FFM, JDK 21)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # gcc + cmake are preinstalled on ubuntu-latest; the Kotlin side uses the
+      # committed Gradle wrapper, so no system Gradle is needed.
+      - name: Run cross-language benchmark
+        run: |
+          chmod +x bench/run-all.sh bindings/kotlin/gradlew
+          bench/run-all.sh
+          echo "---- results.json ----"
+          cat bench/results/results.json
+
+      - name: Publish results to gh-pages
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git fetch origin gh-pages
+          git worktree add /tmp/gh-pages gh-pages
+          mkdir -p /tmp/gh-pages/benchmarks
+          cp bench/results/results.json /tmp/gh-pages/benchmarks/cross-lang.json
+          cd /tmp/gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "No change."
+          else
+            git add benchmarks/cross-lang.json
+            git commit -m "Update cross-language benchmark results"
+            git push origin gh-pages
+          fi
+          cd -
+          git worktree remove /tmp/gh-pages
+
+      - name: Rebuild docs site
+        if: ${{ always() && github.ref == 'refs/heads/main' }}
+        run: gh workflow run "Deploy Docs to GitHub Pages"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

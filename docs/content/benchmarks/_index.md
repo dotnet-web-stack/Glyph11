@@ -90,3 +90,37 @@ These numbers are from CI runs (`ubuntu-latest`) and may differ from local resul
 {{< callout type="info" >}}
 The chart requires at least two data points to show trend lines. Run the benchmark workflow manually on `main` to add new data points.
 {{< /callout >}}
+
+## Cross-language (native core via bindings)
+
+Throughput of the C core (`glyph11_parse_request`) measured the same way from
+each runtime — pure C, the .NET binding (P/Invoke), and the Kotlin binding
+(Panama FFM) — against the managed `UltraHardenedParser` as a reference. All read
+identical payloads (see the `bench/` directory). Lower is better.
+
+<div id="xlang-table"><p><em>Loading…</em></p></div>
+
+<script>
+(function () {
+  fetch('/Glyph11/benchmarks/cross-lang.json')
+    .then(function (r) { if (!r.ok) throw new Error('no data'); return r.json(); })
+    .then(function (d) {
+      var langs = d.langs;
+      var h = '<table><tr><th>Payload</th>' +
+        langs.map(function (l) { return '<th>' + l.label + '</th>'; }).join('') + '</tr>';
+      d.rows.forEach(function (row) {
+        h += '<tr><td>' + row.label + '</td>' +
+          langs.map(function (l) {
+            var v = row[l.key];
+            return '<td style="text-align:right">' + (v == null ? '—' : v.toFixed(0) + ' ns') + '</td>';
+          }).join('') + '</tr>';
+      });
+      h += '</table>';
+      document.getElementById('xlang-table').innerHTML = h;
+    })
+    .catch(function () {
+      document.getElementById('xlang-table').innerHTML =
+        '<p><em>No cross-language data yet — run the Cross-Language Benchmark workflow on <code>main</code>.</em></p>';
+    });
+})();
+</script>

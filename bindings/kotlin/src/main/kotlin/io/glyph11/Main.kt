@@ -1,9 +1,32 @@
 package io.glyph11
 
+import java.io.File
 import kotlin.system.exitProcess
 
+fun main(args: Array<String>) {
+    if (args.isNotEmpty() && args[0] == "bench") {
+        bench(if (args.size > 1) args[1] else ".")
+        return
+    }
+    smoke()
+}
+
+/** Emit `kotlin-ffi,<payload>,<ns>` for the cross-language aggregator. */
+private fun bench(dir: String) {
+    val cases = listOf(
+        Triple("small", "small.bin", 2_000_000L),
+        Triple("4k", "h4k.bin", 500_000L),
+        Triple("32k", "h32k.bin", 100_000L),
+    )
+    for ((name, file, iters) in cases) {
+        val data = File(dir, file).readBytes()
+        val ns = Glyph11.benchParse(data, iters)
+        println("kotlin-ffi,%s,%.1f".format(name, ns))
+    }
+}
+
 /** Smoke test: parse a few requests via the native core and verify the results. */
-fun main() {
+private fun smoke() {
     println("glyph11 abi 0x%06x".format(Glyph11.abiVersion))
 
     var fails = 0
