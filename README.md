@@ -4,7 +4,7 @@ Glyph11 is a dependency free, low allocation HTTP/1.1 parser for C#. It does not
 
 ![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-512bd4)
 [![NuGet](https://img.shields.io/nuget/v/Glyph11.svg)](https://www.nuget.org/packages/Glyph11/)
-[![Docs](https://img.shields.io/badge/docs-online-blue)](https://MDA2AV.github.io/Glyph11/)
+[![Benchmarks](https://img.shields.io/badge/benchmarks-live-blue)](https://dotnet-web-stack.github.io/Glyph11/)
 [![Coverage](https://img.shields.io/sonar/coverage/MDA2AV_Glyph11?server=https%3A%2F%2Fsonarcloud.io)](https://sonarcloud.io/summary/new_code?id=MDA2AV_Glyph11)
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=MDA2AV_Glyph11&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=MDA2AV_Glyph11)
 
@@ -44,7 +44,7 @@ if (UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in li
 }
 ```
 
-For a complete `PipeReader` integration loop, see the [integration guide](https://MDA2AV.github.io/Glyph11/docs/getting-started/integration/).
+Glyph11 plugs into a `PipeReader` loop: read a buffer, call `TryExtractFullHeaderValidated`, advance the reader by `bytesRead`, and repeat.
 
 ## Parsers
 
@@ -59,7 +59,7 @@ Glyph11 ships two parsers:
 - **SIMD-accelerated validation** keeps the `UltraHardenedParser` within a small constant factor of the unvalidated `FlexibleParser`
 - **Multi-segment linearization** provides ROM-speed parsing with a single upfront allocation
 
-See the [live benchmarks](https://MDA2AV.github.io/Glyph11/benchmarks/) for latest numbers and trend charts.
+See the [live benchmarks](https://dotnet-web-stack.github.io/Glyph11/) — the managed parser vs. the C core and its .NET (P/Invoke) and JVM (Panama FFM) bindings, contiguous and multi-segment.
 
 ## CI Workflows
 
@@ -70,9 +70,11 @@ The **Benchmark** workflow (`.github/workflows/benchmark.yml`) measures parser t
 | Trigger | Job | What it does |
 |---------|-----|--------------|
 | `pull_request` | **Parser Benchmarks** | Runs `FlexibleParserBenchmark` and `UltraHardenedParserBenchmark`, compares against the baseline on `gh-pages`, and posts a comment on the PR. Fails if any metric regresses by more than 15%. |
-| `workflow_dispatch` | **Full Benchmarks** | Runs all benchmarks (parsers + `AllSemanticChecksBenchmark`), updates the baseline on `gh-pages`, and triggers a docs site rebuild. |
+| `workflow_dispatch` | **Full Benchmarks** | Runs all benchmarks (parsers + `AllSemanticChecksBenchmark`) and updates the baseline on `gh-pages`. |
 
-**Data flow:** benchmark results are stored as `benchmarks/data.js` on the `gh-pages` branch. The docs site loads this file to render trend charts at [/benchmarks/](https://MDA2AV.github.io/Glyph11/benchmarks/).
+**Data flow:** benchmark results are stored as `benchmarks/data.js` on the `gh-pages` branch.
+
+> The cross-language comparison on the [live site](https://dotnet-web-stack.github.io/Glyph11/) is produced separately by the **Cross-Language Benchmark** workflow (`.github/workflows/cross-bench.yml`), which benchmarks the C core, both bindings, and the managed parser, then publishes `benchmarks/cross-lang.json` to `gh-pages`.
 
 To publish updated benchmark data:
 
@@ -88,9 +90,9 @@ Servers tested: **Glyph11** (raw TCP + UltraHardenedParser), **Kestrel** (ASP.NE
 | Trigger | What it does |
 |---------|--------------|
 | `pull_request` | Starts all three servers, probes each one, evaluates results with strict status-code matching (e.g. a parser error must return `400`, not `404`), and posts a comparison table as a PR comment. Never fails the build — this is informational. |
-| `workflow_dispatch` | Same as above, plus pushes `probe/data.js` to `gh-pages` and triggers a docs site rebuild. |
+| `workflow_dispatch` | Same as above, plus pushes `probe/data.js` to `gh-pages`. |
 
-**Data flow:** probe results are stored as `probe/data.js` on the `gh-pages` branch. The docs site loads this file to render the comparison matrix at [/probe-results/](https://MDA2AV.github.io/Glyph11/probe-results/).
+**Data flow:** probe results are stored as `probe/data.js` on the `gh-pages` branch.
 
 To publish updated probe data:
 

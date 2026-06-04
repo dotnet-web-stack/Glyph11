@@ -125,10 +125,12 @@ object Glyph11 {
      * for a fair cross-language comparison; the public [parse] allocates an
      * Arena per call for convenience.
      */
-    fun benchParse(input: ByteArray, iters: Long): Double {
+    fun benchParse(input: ByteArray, iters: Long, multiSeg: Boolean = false): Double {
         Arena.ofConfined().use { arena ->
             val buf = arena.allocate(maxOf(input.size, 1).toLong())
-            MemorySegment.copy(input, 0, buf, ValueLayout.JAVA_BYTE, 0L, input.size)
+            if (!multiSeg) MemorySegment.copy(input, 0, buf, ValueLayout.JAVA_BYTE, 0L, input.size)
+            val s1 = input.size / 3
+            val s2 = 2 * input.size / 3
             val headers = arena.allocate(SIZEOF_FIELD * CAPACITY)
             val query = arena.allocate(SIZEOF_FIELD * CAPACITY)
             val req = arena.allocate(SIZEOF_REQUEST)
@@ -149,6 +151,11 @@ object Glyph11 {
             lim.set(ValueLayout.JAVA_INT, 28L, 64 * 1024)  // max_total_header_bytes
 
             fun once() {
+                if (multiSeg) { // linearize 3 segments into the reused native buffer each call
+                    MemorySegment.copy(input, 0, buf, ValueLayout.JAVA_BYTE, 0L, s1)
+                    MemorySegment.copy(input, s1, buf, ValueLayout.JAVA_BYTE, s1.toLong(), s2 - s1)
+                    MemorySegment.copy(input, s2, buf, ValueLayout.JAVA_BYTE, s2.toLong(), input.size - s2)
+                }
                 req.set(ValueLayout.ADDRESS, OFF_HEADERS, headers)
                 req.set(ValueLayout.JAVA_INT, OFF_HEADER_CAP, CAPACITY)
                 req.set(ValueLayout.ADDRESS, OFF_QUERY, query)

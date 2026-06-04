@@ -10,8 +10,11 @@ LANGS = [
     ("dotnet-managed-rom", "C# Ultra (ROM)"),
     ("dotnet-managed-multiseg", "C# Ultra (multi-seg)"),
     ("pure-c", "Pure C"),
+    ("pure-c-multiseg", "Pure C (multi-seg)"),
     ("dotnet-ffi", "C# binding (FFI)"),
+    ("dotnet-ffi-multiseg", "C# binding (multi-seg)"),
     ("kotlin-ffi", "Kotlin binding (FFI)"),
+    ("kotlin-ffi-multiseg", "Kotlin binding (multi-seg)"),
 ]
 PAYLOADS = [("small", "~95 B"), ("4k", "4 KB"), ("32k", "32 KB")]
 

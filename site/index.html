@@ -3,53 +3,62 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Glyph11 — Parser Benchmarks</title>
+<title>Glyph11 — hardened HTTP/1.1 parser</title>
 <style>
   :root { color-scheme: light dark; --line: #e2e2e2; --muted: #6b7280; }
   * { box-sizing: border-box; }
   body { font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
          max-width: 940px; margin: 2.2rem auto; padding: 0 1.1rem; }
-  h1 { font-size: 1.55rem; margin: 0 0 .15rem; }
-  .sub { color: var(--muted); margin: 0 0 1.4rem; }
-  .card { border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem 1.2rem; margin: 1.3rem 0; }
+  h1 { font-size: 1.9rem; margin: 0 0 .2rem; }
+  h2 { font-size: 1.15rem; margin: 1.8rem 0 .6rem; }
+  .tagline { color: var(--muted); margin: 0 0 1.4rem; font-size: 1.02rem; }
+  .meta { color: var(--muted); margin: 0 0 1rem; font-size: .9rem; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem 1.2rem; margin: 1rem 0; }
   table { border-collapse: collapse; width: 100%; }
   th, td { padding: .5rem .65rem; border-bottom: 1px solid var(--line); text-align: right;
-           font-variant-numeric: tabular-nums; }
+           font-variant-numeric: tabular-nums; white-space: nowrap; }
   th:first-child, td:first-child { text-align: left; }
   thead th { border-bottom: 2px solid #9ca3af; font-weight: 600; }
   td.best { font-weight: 700; color: #16a34a; }
-  h2 { font-size: 1.05rem; margin: 0 0 .8rem; color: #374151; }
+  #table { overflow-x: auto; }
   footer { color: var(--muted); font-size: .85rem; margin-top: 2rem; line-height: 1.5; }
   a { color: #2563eb; text-decoration: none; }
   a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
-  <h1>Glyph11 — HTTP/1.1 parser benchmarks</h1>
-  <p class="sub"><code>UltraHardenedParser</code> · ns/op, lower is better · <span id="meta">loading…</span></p>
+  <h1>Glyph11</h1>
+  <p class="tagline">
+    A zero-allocation, hardened HTTP/1.1 request parser — a C# library and a C core,
+    reachable from .NET (P/Invoke) and the JVM (Kotlin / Panama FFM).
+    <a href="https://github.com/dotnet-web-stack/Glyph11">GitHub&nbsp;→</a>
+  </p>
+
+  <h2>Benchmarks</h2>
+  <p class="meta"><code>UltraHardenedParser</code> · ns/op, lower is better · <span id="meta">loading…</span></p>
 
   <div class="card">
-    <h2>Latency by payload</h2>
     <div id="table"><p>Loading…</p></div>
   </div>
 
   <div class="card">
-    <h2>All implementations, one chart</h2>
-    <canvas id="chart" height="150"></canvas>
+    <canvas id="chart" height="160"></canvas>
   </div>
 
   <footer>
     The same hardened parser, measured the same way (warmup + best of timed trials) on identical
-    payloads. <b>C# Ultra (ROM / multi-seg)</b> is the standalone managed parser; <b>Pure C</b> is
-    the native core; the bindings reach that core from .NET (P/Invoke) and the JVM (Kotlin / Panama
-    FFM). The bindings call the same C, so the three native columns are within measurement noise of
-    each other (a few %) — the meaningful gap is native vs. managed.
+    payloads, in <b>contiguous</b> and <b>multi-segment</b> modes. <b>C# Ultra</b> is the standalone
+    managed parser; <b>Pure C</b> is the native core; the bindings reach that core from .NET and the
+    JVM. The bindings call the same C, so the native columns are within measurement noise of each
+    other — the meaningful gap is native vs. managed. Native multi-segment is contiguous + a memcpy
+    (no per-call allocation), unlike the managed multi-segment path.
     <br><a href="https://github.com/dotnet-web-stack/Glyph11">github.com/dotnet-web-stack/Glyph11</a>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
   <script>
-    const COLORS = ['#2563eb', '#7c3aed', '#16a34a', '#ea580c', '#db2777'];
+    // paired hues: contiguous = dark, multi-seg = light (managed, pure C, C# FFI, Kotlin)
+    const COLORS = ['#1d4ed8', '#93c5fd', '#15803d', '#86efac', '#c2410c', '#fdba74', '#6d28d9', '#c4b5fd'];
 
     fetch('data.json', { cache: 'no-store' })
       .then(r => { if (!r.ok) throw new Error('no data'); return r.json(); })

@@ -7,6 +7,7 @@
 #include "glyph11.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 static unsigned char* read_file(const char* path, size_t* out_len)
@@ -46,6 +47,34 @@ static double bench(const unsigned char* buf, size_t len, const glyph11_limits* 
     return best;
 }
 
+/* Multi-segment variant: linearize 3 segments into a reused buffer, then parse. */
+static double bench_ms(const unsigned char* buf, size_t len, const glyph11_limits* lim, long iters)
+{
+    static glyph11_field h[256], q[256];
+    static unsigned char dst[64 * 1024 + 16];
+    glyph11_request r;
+    size_t s1 = len / 3, s2 = 2 * len / 3;
+    for (long i = 0; i < iters / 10 + 1; i++) {  /* warmup */
+        memcpy(dst, buf, s1); memcpy(dst + s1, buf + s1, s2 - s1); memcpy(dst + s2, buf + s2, len - s2);
+        r.headers = h; r.header_cap = 256; r.query = q; r.query_cap = 256;
+        glyph11_parse_request(dst, len, lim, &r, NULL);
+    }
+    double best = 1e30;
+    for (int trial = 0; trial < 5; trial++) {
+        struct timespec t0, t1;
+        clock_gettime(CLOCK_MONOTONIC, &t0);
+        for (long i = 0; i < iters; i++) {
+            memcpy(dst, buf, s1); memcpy(dst + s1, buf + s1, s2 - s1); memcpy(dst + s2, buf + s2, len - s2);
+            r.headers = h; r.header_cap = 256; r.query = q; r.query_cap = 256;
+            glyph11_parse_request(dst, len, lim, &r, NULL);
+        }
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        double ns = ((double)(t1.tv_sec - t0.tv_sec) * 1e9 + (double)(t1.tv_nsec - t0.tv_nsec)) / (double)iters;
+        if (ns < best) best = ns;
+    }
+    return best;
+}
+
 int main(int argc, char** argv)
 {
     const char* dir = argc > 1 ? argv[1] : ".";
@@ -64,8 +93,8 @@ int main(int argc, char** argv)
         size_t len;
         snprintf(path, sizeof path, "%s/%s", dir, cases[i].file);
         unsigned char* b = read_file(path, &len);
-        double ns = bench(b, len, &lim, cases[i].iters);
-        printf("pure-c,%s,%.1f\n", cases[i].name, ns);
+        printf("pure-c,%s,%.1f\n", cases[i].name, bench(b, len, &lim, cases[i].iters));
+        printf("pure-c-multiseg,%s,%.1f\n", cases[i].name, bench_ms(b, len, &lim, cases[i].iters));
         free(b);
     }
     return 0;

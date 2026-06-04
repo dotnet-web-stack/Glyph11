@@ -126,9 +126,14 @@ internal static class CsvBench
             double mSeg = Best(iters, () => { req.Clear(); var s = seq; UltraHardenedParser.TryExtractFullHeaderValidated(ref s, req, in ManagedLimits, out _); });
             Console.WriteLine($"dotnet-managed-multiseg,{name},{mSeg:F1}");
 
-            // native binding (FFI)
+            // native binding (FFI) — contiguous
             double ffi = Best(iters, () => Glyph11Parser.Parse(data, h, q, NativeLimits, out _));
             Console.WriteLine($"dotnet-ffi,{name},{ffi:F1}");
+
+            // native binding (FFI) — multi-segment: linearize into a reused buffer, then parse
+            var lin = new byte[data.Length];
+            double ffiSeg = Best(iters, () => { seq.CopyTo(lin); Glyph11Parser.Parse(lin, h, q, NativeLimits, out _); });
+            Console.WriteLine($"dotnet-ffi-multiseg,{name},{ffiSeg:F1}");
         }
         req.Dispose();
     }

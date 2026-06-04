@@ -20,8 +20,8 @@ private fun bench(dir: String) {
     )
     for ((name, file, iters) in cases) {
         val data = File(dir, file).readBytes()
-        val ns = Glyph11.benchParse(data, iters)
-        println("kotlin-ffi,%s,%.1f".format(name, ns))
+        println("kotlin-ffi,%s,%.1f".format(name, Glyph11.benchParse(data, iters)))
+        println("kotlin-ffi-multiseg,%s,%.1f".format(name, Glyph11.benchParse(data, iters, multiSeg = true)))
     }
 }
 
