@@ -1,0 +1,38 @@
+package io.glyph11
+
+import kotlin.system.exitProcess
+
+/** Smoke test: parse a few requests via the native core and verify the results. */
+fun main() {
+    println("glyph11 abi 0x%06x".format(Glyph11.abiVersion))
+
+    var fails = 0
+    fun check(name: String, cond: Boolean) {
+        if (!cond) { fails++; println("  FAIL $name") }
+    }
+    fun bytes(s: String) = s.toByteArray(Charsets.ISO_8859_1)
+    fun slice(b: ByteArray, sp: Glyph11Span) = String(b, sp.offset, sp.length, Charsets.ISO_8859_1)
+
+    val valid = bytes("GET /api/users?a=1&b=2 HTTP/1.1\r\nHost: example.com\r\nAccept: */*\r\n\r\n")
+    val r = Glyph11.parse(valid)
+    check("valid ok", r.isOk)
+    check("method", slice(valid, r.method) == "GET")
+    check("path", slice(valid, r.path) == "/api/users")
+    check("version", slice(valid, r.version) == "HTTP/1.1")
+    check("headerCount", r.headerCount == 2)
+    check("queryCount", r.queryCount == 2)
+    check("consumed", r.consumed.toInt() == valid.size)
+
+    check("no-host -> 400", Glyph11.httpCode(Glyph11.parse(bytes("GET / HTTP/1.1\r\n\r\n")).status) == 400)
+    check("te+cl -> 400", Glyph11.httpCode(Glyph11.parse(
+        bytes("POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n")).status) == 400)
+    check("traversal -> 400", Glyph11.httpCode(Glyph11.parse(bytes("GET /a/../b HTTP/1.1\r\nHost: x\r\n\r\n")).status) == 400)
+    check("incomplete", Glyph11.parse(bytes("GET / HTTP/1.1\r\nHost: x\r\n")).isIncomplete)
+
+    if (fails == 0) {
+        println("kotlin binding: all checks passed")
+    } else {
+        println("kotlin binding: $fails check(s) FAILED")
+        exitProcess(1)
+    }
+}

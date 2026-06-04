@@ -1,0 +1,121 @@
+package io.glyph11
+
+import java.lang.foreign.Arena
+import java.lang.foreign.FunctionDescriptor
+import java.lang.foreign.Linker
+import java.lang.foreign.MemorySegment
+import java.lang.foreign.SymbolLookup
+import java.lang.foreign.ValueLayout
+import java.lang.invoke.MethodHandle
+
+/** A byte range (offset + length) into the parsed input buffer (zero-copy). */
+data class Glyph11Span(val offset: Int, val length: Int)
+
+/** Parsed request fields. Spans index into the input passed to [Glyph11.parse]. */
+data class Glyph11Result(
+    val status: Int,
+    val method: Glyph11Span,
+    val target: Glyph11Span,
+    val path: Glyph11Span,
+    val version: Glyph11Span,
+    val headerCount: Int,
+    val queryCount: Int,
+    val consumed: Long,
+) {
+    val isOk: Boolean get() = status == 0
+    val isIncomplete: Boolean get() = status == 1
+}
+
+/**
+ * Kotlin/JVM binding for the Glyph11 hardened HTTP/1.1 request parser
+ * (`libglyph11`), via the Foreign Function & Memory API (Panama).
+ *
+ * Point at the native library with `-Dglyph11.lib=/path/to/libglyph11.so`,
+ * otherwise it is resolved from the default library search path.
+ */
+object Glyph11 {
+    // glyph11_request field offsets (see glyph11.h; LP64 layout).
+    private const val OFF_HEADERS = 32L
+    private const val OFF_HEADER_CAP = 40L
+    private const val OFF_HEADER_COUNT = 44L
+    private const val OFF_QUERY = 48L
+    private const val OFF_QUERY_CAP = 56L
+    private const val OFF_QUERY_COUNT = 60L
+    private const val SIZEOF_REQUEST = 64L
+    private const val SIZEOF_FIELD = 16L
+    private const val CAPACITY = 256
+
+    private val linker = Linker.nativeLinker()
+
+    private val lookup: SymbolLookup = run {
+        val path = System.getProperty("glyph11.lib")
+        if (path != null) SymbolLookup.libraryLookup(path, Arena.global())
+        else SymbolLookup.libraryLookup("glyph11", Arena.global())
+    }
+
+    private fun handle(name: String, desc: FunctionDescriptor): MethodHandle =
+        linker.downcallHandle(lookup.find(name).orElseThrow { UnsatisfiedLinkError(name) }, desc)
+
+    private val parseHandle = handle(
+        "glyph11_parse_request",
+        FunctionDescriptor.of(
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS,    // const uint8_t* buf
+            ValueLayout.JAVA_LONG,  // size_t len
+            ValueLayout.ADDRESS,    // const glyph11_limits* (null -> defaults)
+            ValueLayout.ADDRESS,    // glyph11_request*
+            ValueLayout.ADDRESS,    // size_t* consumed
+        ),
+    )
+
+    private val httpCodeHandle = handle(
+        "glyph11_status_http_code",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT),
+    )
+
+    private val abiHandle = handle(
+        "glyph11_abi_version",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT),
+    )
+
+    /** Packed ABI version of the loaded native library. */
+    val abiVersion: Int get() = abiHandle.invoke() as Int
+
+    /** HTTP response code for a status (400 / 431, or 0 for OK / incomplete). */
+    fun httpCode(status: Int): Int = httpCodeHandle.invoke(status) as Int
+
+    /** Parse one HTTP/1.1 request header block from [input]. */
+    fun parse(input: ByteArray): Glyph11Result {
+        Arena.ofConfined().use { arena ->
+            val buf = arena.allocate(maxOf(input.size, 1).toLong())
+            MemorySegment.copy(input, 0, buf, ValueLayout.JAVA_BYTE, 0L, input.size)
+
+            val headers = arena.allocate(SIZEOF_FIELD * CAPACITY)
+            val query = arena.allocate(SIZEOF_FIELD * CAPACITY)
+            val req = arena.allocate(SIZEOF_REQUEST) // zero-initialized
+            req.set(ValueLayout.ADDRESS, OFF_HEADERS, headers)
+            req.set(ValueLayout.JAVA_INT, OFF_HEADER_CAP, CAPACITY)
+            req.set(ValueLayout.ADDRESS, OFF_QUERY, query)
+            req.set(ValueLayout.JAVA_INT, OFF_QUERY_CAP, CAPACITY)
+            val consumed = arena.allocate(ValueLayout.JAVA_LONG)
+
+            val status = parseHandle.invoke(
+                buf, input.size.toLong(), MemorySegment.NULL, req, consumed,
+            ) as Int
+
+            fun span(off: Long) =
+                Glyph11Span(req.get(ValueLayout.JAVA_INT, off), req.get(ValueLayout.JAVA_INT, off + 4))
+
+            return Glyph11Result(
+                status = status,
+                method = span(0L),
+                target = span(8L),
+                path = span(16L),
+                version = span(24L),
+                headerCount = req.get(ValueLayout.JAVA_INT, OFF_HEADER_COUNT),
+                queryCount = req.get(ValueLayout.JAVA_INT, OFF_QUERY_COUNT),
+                consumed = if (status == 0) consumed.get(ValueLayout.JAVA_LONG, 0L) else 0L,
+            )
+        }
+    }
+}

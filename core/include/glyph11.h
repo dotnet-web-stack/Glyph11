@@ -1,6 +1,11 @@
 /*
  * glyph11.h — C ABI for the Glyph11 HTTP/1.1 request parser core.
  *
+ * A single hardened parser: full RFC 9110/9112 validation, configurable resource
+ * limits, and every semantic / smuggling check, fused into one pass. (The C#
+ * library also ships a no-validation FlexibleParser; that fast path is intentionally
+ * NOT ported — the C core exists for the security-critical validation.)
+ *
  * Zero-copy, zero-allocation, dependency-free. All results are byte ranges
  * (offset + length) into the caller's input buffer; the parser never copies
  * payload bytes and never allocates. The caller owns the buffer and must keep
@@ -30,22 +35,7 @@ extern "C" {
  * Bindings can compare this against the macros they compiled against. */
 uint32_t glyph11_abi_version(void);
 
-/* ---- Validation mode --------------------------------------------------- */
-
-/* Strictness flags, combined with bitwise OR.
- *   FLEXIBLE (0) : structural parse only — fast, for trusted/pre-validated input.
- *   SYNTAX       : RFC 9110/9112 token, field-value, version and line-ending checks.
- *   SEMANTIC     : smuggling / traversal / Host checks (implies and requires SYNTAX).
- *   STRICT       : SYNTAX | SEMANTIC — recommended for internet-facing servers.
- */
-typedef enum {
-    GLYPH11_FLEXIBLE = 0,
-    GLYPH11_SYNTAX   = 1u << 0,
-    GLYPH11_SEMANTIC = 1u << 1,
-    GLYPH11_STRICT   = (1u << 0) | (1u << 1)
-} glyph11_mode;
-
-/* ---- Resource limits (enforced when SYNTAX is set) --------------------- */
+/* ---- Resource limits --------------------------------------------------- */
 
 /* Zero-initialize and set fields, or call glyph11_limits_default(). The
  * struct_size field must be set to sizeof(glyph11_limits) by the caller so the
@@ -82,7 +72,7 @@ typedef struct {
     glyph11_span method;
     glyph11_span target;   /* full request-target, as received */
     glyph11_span path;     /* request-target with the query string removed */
-    glyph11_span version;  /* e.g. "HTTP/1.1"; empty span in FLEXIBLE mode */
+    glyph11_span version;  /* e.g. "HTTP/1.1" */
 
     glyph11_field* headers;       /* caller-provided storage (required) */
     uint32_t       header_cap;    /* in:  capacity of headers[] */
@@ -102,6 +92,7 @@ typedef enum {
     /* Structural / syntax violations (HTTP 400). */
     GLYPH11_ERR_REQUEST_LINE = 100,
     GLYPH11_ERR_METHOD_TOKEN,
+    GLYPH11_ERR_METHOD_LENGTH,   /* method longer than max_method_len (HTTP 400, matches C#) */
     GLYPH11_ERR_VERSION,
     GLYPH11_ERR_TARGET_CHAR,
     GLYPH11_ERR_BARE_LF,
@@ -130,7 +121,10 @@ typedef enum {
     GLYPH11_ERR_ASTERISK_FORM,
 
     /* Resource-limit breaches (HTTP 431). */
-    GLYPH11_ERR_TOO_LARGE = 300,
+    GLYPH11_ERR_TOO_LARGE = 300,         /* total header bytes over max_total_header_bytes */
+    GLYPH11_ERR_URL_TOO_LONG,
+    GLYPH11_ERR_HEADER_NAME_TOO_LONG,
+    GLYPH11_ERR_HEADER_VALUE_TOO_LONG,
     GLYPH11_ERR_TOO_MANY_HEADERS,
     GLYPH11_ERR_TOO_MANY_QUERY_PARAMS
 } glyph11_status;
@@ -150,8 +144,7 @@ const char* glyph11_status_message(glyph11_status status);
  *
  *   buf, len  : bytes received so far. NOT required to be NUL-terminated and
  *               may contain NUL bytes.
- *   mode      : strictness (see glyph11_mode).
- *   limits    : enforced when SYNTAX is set; may be NULL in FLEXIBLE mode.
+ *   limits    : resource limits to enforce; may be NULL to use defaults.
  *   req       : caller sets headers/header_cap (and optionally query/query_cap);
  *               the parser fills the spans and *_count fields.
  *   consumed  : optional out-param; on GLYPH11_OK, set to the number of bytes
@@ -162,7 +155,7 @@ const char* glyph11_status_message(glyph11_status status);
  */
 glyph11_status glyph11_parse_request(
     const uint8_t* buf, size_t len,
-    glyph11_mode mode, const glyph11_limits* limits,
+    const glyph11_limits* limits,
     glyph11_request* req, size_t* consumed);
 
 #ifdef __cplusplus
