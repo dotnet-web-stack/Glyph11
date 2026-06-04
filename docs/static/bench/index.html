@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glyph11 — Parser Benchmarks</title>
+<style>
+  :root { color-scheme: light dark; --line: #e2e2e2; --muted: #6b7280; }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+         max-width: 940px; margin: 2.2rem auto; padding: 0 1.1rem; }
+  h1 { font-size: 1.55rem; margin: 0 0 .15rem; }
+  .sub { color: var(--muted); margin: 0 0 1.4rem; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem 1.2rem; margin: 1.3rem 0; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: .5rem .65rem; border-bottom: 1px solid var(--line); text-align: right;
+           font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { border-bottom: 2px solid #9ca3af; font-weight: 600; }
+  td.best { font-weight: 700; color: #16a34a; }
+  h2 { font-size: 1.05rem; margin: 0 0 .8rem; color: #374151; }
+  footer { color: var(--muted); font-size: .85rem; margin-top: 2rem; line-height: 1.5; }
+  a { color: #2563eb; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+  <h1>Glyph11 — HTTP/1.1 parser benchmarks</h1>
+  <p class="sub"><code>UltraHardenedParser</code> · ns/op, lower is better · <span id="meta">loading…</span></p>
+
+  <div class="card">
+    <h2>Latency by payload</h2>
+    <div id="table"><p>Loading…</p></div>
+  </div>
+
+  <div class="card">
+    <h2>All implementations, one chart</h2>
+    <canvas id="chart" height="150"></canvas>
+  </div>
+
+  <footer>
+    The same hardened parser, measured the same way (warmup + timed loop) on identical payloads.
+    <b>C# Ultra (ROM / multi-seg)</b> is the standalone managed parser; <b>Pure C</b> is the native
+    core; the bindings reach that core from .NET (P/Invoke) and the JVM (Kotlin / Panama FFM).
+    <br><a href="https://github.com/dotnet-web-stack/Glyph11">github.com/dotnet-web-stack/Glyph11</a>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+  <script>
+    const COLORS = ['#2563eb', '#7c3aed', '#16a34a', '#ea580c', '#db2777'];
+
+    fetch('data.json', { cache: 'no-store' })
+      .then(r => { if (!r.ok) throw new Error('no data'); return r.json(); })
+      .then(d => {
+        const langs = d.langs, rows = d.rows;
+        document.getElementById('meta').textContent = d.generated ? ('as of ' + d.generated) : '';
+
+        // --- table (best per row highlighted) ---
+        let html = '<table><thead><tr><th>Payload</th>' +
+          langs.map(l => '<th>' + l.label + '</th>').join('') + '</tr></thead><tbody>';
+        for (const row of rows) {
+          const vals = langs.map(l => row[l.key]).filter(v => v != null);
+          const min = Math.min.apply(null, vals);
+          html += '<tr><td>' + row.label + '</td>' + langs.map(l => {
+            const v = row[l.key];
+            const cls = (v != null && v === min) ? ' class="best"' : '';
+            return '<td' + cls + '>' + (v == null ? '—' : v.toFixed(0) + ' ns') + '</td>';
+          }).join('') + '</tr>';
+        }
+        html += '</tbody></table>';
+        document.getElementById('table').innerHTML = html;
+
+        // --- one chart, all series (grouped bars, log scale) ---
+        new Chart(document.getElementById('chart'), {
+          type: 'bar',
+          data: {
+            labels: rows.map(r => r.label),
+            datasets: langs.map((l, i) => ({
+              label: l.label,
+              data: rows.map(r => r[l.key]),
+              backgroundColor: COLORS[i % COLORS.length],
+            })),
+          },
+          options: {
+            responsive: true,
+            scales: {
+              y: { type: 'logarithmic', title: { display: true, text: 'ns/op (log scale)' } },
+              x: { title: { display: true, text: 'payload size' } },
+            },
+            plugins: { legend: { position: 'bottom' } },
+          },
+        });
+      })
+      .catch(() => {
+        document.getElementById('table').innerHTML =
+          '<p><em>No benchmark data yet — run the Cross-Language Benchmark workflow.</em></p>';
+        document.getElementById('meta').textContent = '';
+      });
+  </script>
+</body>
+</html>

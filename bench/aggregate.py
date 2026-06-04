@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Aggregate cross-language bench CSV (`lang,payload,ns` on stdin) into
 results.md + results.json in the output dir (argv[1], default cwd)."""
+import datetime
 import json
 import os
 import sys
 
 LANGS = [
+    ("dotnet-managed-rom", "C# Ultra (ROM)"),
+    ("dotnet-managed-multiseg", "C# Ultra (multi-seg)"),
     ("pure-c", "Pure C"),
-    ("dotnet-ffi", "C# (FFI)"),
-    ("kotlin-ffi", "Kotlin (FFI)"),
-    ("dotnet-managed", "C# managed (ref)"),
+    ("dotnet-ffi", "C# binding (FFI)"),
+    ("kotlin-ffi", "Kotlin binding (FFI)"),
 ]
 PAYLOADS = [("small", "~95 B"), ("4k", "4 KB"), ("32k", "32 KB")]
 
@@ -41,8 +43,14 @@ def main() -> None:
     md_text = "\n".join(md) + "\n"
     with open(os.path.join(out, "results.md"), "w") as f:
         f.write(md_text)
+    generated = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     with open(os.path.join(out, "results.json"), "w") as f:
-        json.dump({"unit": "ns/op", "langs": [{"key": k, "label": v} for k, v in LANGS], "rows": rows_json}, f, indent=2)
+        json.dump({
+            "unit": "ns/op",
+            "generated": generated,
+            "langs": [{"key": k, "label": v} for k, v in LANGS],
+            "rows": rows_json,
+        }, f, indent=2)
     sys.stdout.write(md_text)
 
 
