@@ -1,6 +1,6 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1770423685312,
-  "repoUrl": "https://github.com/MDA2AV/Glyph11",
+  "lastUpdate": 1780585609808,
+  "repoUrl": "https://github.com/dotnet-web-stack/Glyph11",
   "entries": {
     "Benchmark": [
       {
@@ -1008,6 +1008,172 @@ window.BENCHMARK_DATA = {
           {
             "name": "Benchmarks.AllSemanticChecksBenchmark.AllChecks_32K.Allocated",
             "value": 0,
+            "unit": "ns",
+            "range": "± 0"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Diogo Martins",
+            "username": "MDA2AV",
+            "email": "165835485+MDA2AV@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "91dd35d54167484664c4d35455ebd675a741cbf1",
+          "message": "Merge pull request #31 from dotnet-web-stack/0.4.0\n\n0.4.0",
+          "timestamp": "2026-06-04T14:57:20Z",
+          "url": "https://github.com/dotnet-web-stack/Glyph11/commit/91dd35d54167484664c4d35455ebd675a741cbf1"
+        },
+        "date": 1780585609167,
+        "tool": "benchmarkdotnet",
+        "benches": [
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Small_ROM",
+            "value": 143.92314998308817,
+            "unit": "ns",
+            "range": "± 0.10248273866554178"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Small_MultiSegment",
+            "value": 356.45040734608966,
+            "unit": "ns",
+            "range": "± 1.1830187863068842"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header4K_ROM",
+            "value": 696.8160161972046,
+            "unit": "ns",
+            "range": "± 5.210958175437079"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header4K_MultiSegment",
+            "value": 1796.2686780293782,
+            "unit": "ns",
+            "range": "± 5.468529304650483"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header32K_ROM",
+            "value": 5075.681803385417,
+            "unit": "ns",
+            "range": "± 16.48571433528544"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header32K_MultiSegment",
+            "value": 12241.01210530599,
+            "unit": "ns",
+            "range": "± 8.817154956364945"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Small_ROM",
+            "value": 257.46974023183185,
+            "unit": "ns",
+            "range": "± 1.0103066003301882"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Small_MultiSegment",
+            "value": 564.5625867843628,
+            "unit": "ns",
+            "range": "± 8.76356464457622"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header4K_ROM",
+            "value": 1090.6956062316895,
+            "unit": "ns",
+            "range": "± 6.756412084577368"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header4K_MultiSegment",
+            "value": 2385.912279764811,
+            "unit": "ns",
+            "range": "± 12.897925179672484"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header32K_ROM",
+            "value": 7619.502082824707,
+            "unit": "ns",
+            "range": "± 11.45105092097499"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header32K_MultiSegment",
+            "value": 15462.221303304037,
+            "unit": "ns",
+            "range": "± 75.20913934020717"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Small_ROM.Allocated",
+            "value": 0,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Small_MultiSegment.Allocated",
+            "value": 112,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header4K_ROM.Allocated",
+            "value": 0,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header4K_MultiSegment.Allocated",
+            "value": 4128,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header32K_ROM.Allocated",
+            "value": 0,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header32K_MultiSegment.Allocated",
+            "value": 32800,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Small_ROM.Allocated",
+            "value": 0,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Small_MultiSegment.Allocated",
+            "value": 128,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header4K_ROM.Allocated",
+            "value": 0,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header4K_MultiSegment.Allocated",
+            "value": 4128,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header32K_ROM.Allocated",
+            "value": 0,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header32K_MultiSegment.Allocated",
+            "value": 32800,
             "unit": "ns",
             "range": "± 0"
           }
