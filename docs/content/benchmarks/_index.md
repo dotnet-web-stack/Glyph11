@@ -98,4 +98,4 @@ FFM). For a unified table + chart comparing the managed parser (ROM and
 multi-segment), the pure-C core, and both bindings on identical payloads, see the
 dedicated benchmark page:
 
-**→ [/Glyph11/bench/](/Glyph11/bench/)**
+**→ [/Glyph11/bench/](/bench/)**
