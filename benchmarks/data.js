@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780585609808,
+  "lastUpdate": 1780587449761,
   "repoUrl": "https://github.com/dotnet-web-stack/Glyph11",
   "entries": {
     "Benchmark": [
@@ -1104,6 +1104,172 @@ window.BENCHMARK_DATA = {
             "value": 15462.221303304037,
             "unit": "ns",
             "range": "± 75.20913934020717"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Small_ROM.Allocated",
+            "value": 0,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Small_MultiSegment.Allocated",
+            "value": 112,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header4K_ROM.Allocated",
+            "value": 0,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header4K_MultiSegment.Allocated",
+            "value": 4128,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header32K_ROM.Allocated",
+            "value": 0,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header32K_MultiSegment.Allocated",
+            "value": 32800,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Small_ROM.Allocated",
+            "value": 0,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Small_MultiSegment.Allocated",
+            "value": 128,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header4K_ROM.Allocated",
+            "value": 0,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header4K_MultiSegment.Allocated",
+            "value": 4128,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header32K_ROM.Allocated",
+            "value": 0,
+            "unit": "ns",
+            "range": "± 0"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header32K_MultiSegment.Allocated",
+            "value": 32800,
+            "unit": "ns",
+            "range": "± 0"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Diogo Martins",
+            "username": "MDA2AV",
+            "email": "165835485+MDA2AV@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "d3a06f0126f42b93a3d1653d46f962439bec0282",
+          "message": "Merge pull request #32 from dotnet-web-stack/0.4.0\n\nMake benchmark publish job robust to noise",
+          "timestamp": "2026-06-04T15:16:18Z",
+          "url": "https://github.com/dotnet-web-stack/Glyph11/commit/d3a06f0126f42b93a3d1653d46f962439bec0282"
+        },
+        "date": 1780587449126,
+        "tool": "benchmarkdotnet",
+        "benches": [
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Small_ROM",
+            "value": 139.20921897888184,
+            "unit": "ns",
+            "range": "± 0.3414138670448296"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Small_MultiSegment",
+            "value": 349.4604838689168,
+            "unit": "ns",
+            "range": "± 2.860363450836272"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header4K_ROM",
+            "value": 708.5051829020182,
+            "unit": "ns",
+            "range": "± 2.487052061932313"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header4K_MultiSegment",
+            "value": 1826.123291015625,
+            "unit": "ns",
+            "range": "± 16.460001723138515"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header32K_ROM",
+            "value": 4949.9634958903,
+            "unit": "ns",
+            "range": "± 10.64757006352856"
+          },
+          {
+            "name": "Benchmarks.FlexibleParserBenchmark.Header32K_MultiSegment",
+            "value": 12010.515991210938,
+            "unit": "ns",
+            "range": "± 66.48393176840845"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Small_ROM",
+            "value": 252.88829962412515,
+            "unit": "ns",
+            "range": "± 1.7230360417772392"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Small_MultiSegment",
+            "value": 559.2204907735189,
+            "unit": "ns",
+            "range": "± 4.167496342803848"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header4K_ROM",
+            "value": 1118.6354840596516,
+            "unit": "ns",
+            "range": "± 0.7807947528732518"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header4K_MultiSegment",
+            "value": 2225.3782081604004,
+            "unit": "ns",
+            "range": "± 17.533121532742204"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header32K_ROM",
+            "value": 7139.710075378418,
+            "unit": "ns",
+            "range": "± 18.12358659190381"
+          },
+          {
+            "name": "Benchmarks.UltraHardenedParserBenchmark.Header32K_MultiSegment",
+            "value": 15398.131754557291,
+            "unit": "ns",
+            "range": "± 158.60331507605568"
           },
           {
             "name": "Benchmarks.FlexibleParserBenchmark.Small_ROM.Allocated",
