@@ -63,10 +63,14 @@ using Glyph11.Native;
 byte[] request = Encoding.ASCII.GetBytes(
     "GET /api/users?page=1 HTTP/1.1\r\nHost: example.com\r\nAccept: */*\r\n\r\n");
 
-Span<Glyph11Field> headers = stackalloc Glyph11Field[64];
-Span<Glyph11Field> query   = stackalloc Glyph11Field[32];
+// Storage for the parsed fields — size it to the limits, so any request the policy
+// accepts fits. A request with more headers is rejected (HTTP 431), never an
+// overflow: the core bounds-checks every write.
+var limits = Glyph11Limits.Default;                                 // MaxHeaderCount = 100
+Span<Glyph11Field> headers = stackalloc Glyph11Field[(int)limits.MaxHeaderCount];
+Span<Glyph11Field> query   = stackalloc Glyph11Field[(int)limits.MaxQueryParameterCount];
 
-int status = Glyph11Parser.Parse(request, headers, query, Glyph11Limits.Default, out var r);
+int status = Glyph11Parser.Parse(request, headers, query, limits, out var r);
 if (status == Glyph11Parser.Ok)
 {
     string Slice(Glyph11Span s) => Encoding.ASCII.GetString(request, (int)s.Offset, (int)s.Length);
@@ -79,6 +83,11 @@ if (status == Glyph11Parser.Ok)
 }
 // status: 0 = OK, 1 = incomplete (read more), otherwise a protocol/limit error (→ HTTP 400 / 431).
 ```
+
+Keep the header/query arrays at least `MaxHeaderCount` / `MaxQueryParameterCount` — a smaller
+array silently lowers your effective limit (the parser returns `TOO_MANY_HEADERS` /
+`TOO_MANY_QUERY_PARAMS` once it fills, never an overflow). For large limits, rent from
+`ArrayPool<Glyph11Field>` instead of `stackalloc`.
 
 Resolve the native library with the `GLYPH11_NATIVE_PATH` environment variable, or put
 `libglyph11.{so,dll,dylib}` on the OS load path.
