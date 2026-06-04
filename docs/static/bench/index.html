@@ -39,9 +39,11 @@
   </div>
 
   <footer>
-    The same hardened parser, measured the same way (warmup + timed loop) on identical payloads.
-    <b>C# Ultra (ROM / multi-seg)</b> is the standalone managed parser; <b>Pure C</b> is the native
-    core; the bindings reach that core from .NET (P/Invoke) and the JVM (Kotlin / Panama FFM).
+    The same hardened parser, measured the same way (warmup + best of timed trials) on identical
+    payloads. <b>C# Ultra (ROM / multi-seg)</b> is the standalone managed parser; <b>Pure C</b> is
+    the native core; the bindings reach that core from .NET (P/Invoke) and the JVM (Kotlin / Panama
+    FFM). The bindings call the same C, so the three native columns are within measurement noise of
+    each other (a few %) — the meaningful gap is native vs. managed.
     <br><a href="https://github.com/dotnet-web-stack/Glyph11">github.com/dotnet-web-stack/Glyph11</a>
   </footer>
 

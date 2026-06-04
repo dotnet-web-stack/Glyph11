@@ -1,6 +1,6 @@
 {
   "unit": "ns/op",
-  "generated": "2026-06-04 18:18 UTC",
+  "generated": "2026-06-04 19:09 UTC",
   "langs": [
     {
       "key": "dotnet-managed-rom",
@@ -27,29 +27,29 @@
     {
       "payload": "small",
       "label": "~95 B",
-      "dotnet-managed-rom": 144.7,
-      "dotnet-managed-multiseg": 306.4,
-      "pure-c": 98.0,
-      "dotnet-ffi": 99.3,
-      "kotlin-ffi": 102.8
+      "dotnet-managed-rom": 116.4,
+      "dotnet-managed-multiseg": 252.1,
+      "pure-c": 88.9,
+      "dotnet-ffi": 95.0,
+      "kotlin-ffi": 101.3
     },
     {
       "payload": "4k",
       "label": "4 KB",
-      "dotnet-managed-rom": 732.6,
-      "dotnet-managed-multiseg": 1355.6,
-      "pure-c": 547.1,
-      "dotnet-ffi": 550.5,
-      "kotlin-ffi": 573.6
+      "dotnet-managed-rom": 720.0,
+      "dotnet-managed-multiseg": 1344.3,
+      "pure-c": 528.9,
+      "dotnet-ffi": 555.2,
+      "kotlin-ffi": 567.2
     },
     {
       "payload": "32k",
       "label": "32 KB",
-      "dotnet-managed-rom": 5090.3,
-      "dotnet-managed-multiseg": 8895.9,
-      "pure-c": 3984.9,
-      "dotnet-ffi": 4261.4,
-      "kotlin-ffi": 3188.0
+      "dotnet-managed-rom": 4930.3,
+      "dotnet-managed-multiseg": 9091.1,
+      "pure-c": 3932.9,
+      "dotnet-ffi": 4123.6,
+      "kotlin-ffi": 4101.4
     }
   ]
 }

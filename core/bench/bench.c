@@ -31,15 +31,19 @@ static double bench(const unsigned char* buf, size_t len, const glyph11_limits* 
         r.headers = h; r.header_cap = 256; r.query = q; r.query_cap = 256;
         glyph11_parse_request(buf, len, lim, &r, NULL);
     }
-    struct timespec t0, t1;
-    clock_gettime(CLOCK_MONOTONIC, &t0);
-    for (long i = 0; i < iters; i++) {
-        r.headers = h; r.header_cap = 256; r.query = q; r.query_cap = 256;
-        glyph11_parse_request(buf, len, lim, &r, NULL);
+    double best = 1e30;  /* best of N trials filters scheduling/turbo interference */
+    for (int trial = 0; trial < 5; trial++) {
+        struct timespec t0, t1;
+        clock_gettime(CLOCK_MONOTONIC, &t0);
+        for (long i = 0; i < iters; i++) {
+            r.headers = h; r.header_cap = 256; r.query = q; r.query_cap = 256;
+            glyph11_parse_request(buf, len, lim, &r, NULL);
+        }
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        double ns = ((double)(t1.tv_sec - t0.tv_sec) * 1e9 + (double)(t1.tv_nsec - t0.tv_nsec)) / (double)iters;
+        if (ns < best) best = ns;
     }
-    clock_gettime(CLOCK_MONOTONIC, &t1);
-    double ns = (double)(t1.tv_sec - t0.tv_sec) * 1e9 + (double)(t1.tv_nsec - t0.tv_nsec);
-    return ns / (double)iters;
+    return best;
 }
 
 int main(int argc, char** argv)
