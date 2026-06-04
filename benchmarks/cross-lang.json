@@ -1,6 +1,6 @@
 {
   "unit": "ns/op",
-  "generated": "2026-06-04 19:24 UTC",
+  "generated": "2026-06-04 20:11 UTC",
   "langs": [
     {
       "key": "dotnet-managed-rom",
@@ -15,41 +15,62 @@
       "label": "Pure C"
     },
     {
+      "key": "pure-c-multiseg",
+      "label": "Pure C (multi-seg)"
+    },
+    {
       "key": "dotnet-ffi",
       "label": "C# binding (FFI)"
     },
     {
+      "key": "dotnet-ffi-multiseg",
+      "label": "C# binding (multi-seg)"
+    },
+    {
       "key": "kotlin-ffi",
       "label": "Kotlin binding (FFI)"
+    },
+    {
+      "key": "kotlin-ffi-multiseg",
+      "label": "Kotlin binding (multi-seg)"
     }
   ],
   "rows": [
     {
       "payload": "small",
       "label": "~95 B",
-      "dotnet-managed-rom": 242.2,
-      "dotnet-managed-multiseg": 509.7,
-      "pure-c": 165.6,
-      "dotnet-ffi": 164.1,
-      "kotlin-ffi": 174.6
+      "dotnet-managed-rom": 239.9,
+      "dotnet-managed-multiseg": 511.6,
+      "pure-c": 174.4,
+      "pure-c-multiseg": 184.2,
+      "dotnet-ffi": 181.7,
+      "dotnet-ffi-multiseg": 191.0,
+      "kotlin-ffi": 174.6,
+      "kotlin-ffi-multiseg": 199.4
     },
     {
       "payload": "4k",
       "label": "4 KB",
-      "dotnet-managed-rom": 1146.8,
-      "dotnet-managed-multiseg": 2377.6,
-      "pure-c": 971.5,
-      "dotnet-ffi": 997.6,
-      "kotlin-ffi": 1019.6
+      "dotnet-managed-rom": 1118.1,
+      "dotnet-managed-multiseg": 2500.7,
+      "pure-c": 987.8,
+      "pure-c-multiseg": 1044.8,
+      "dotnet-ffi": 991.6,
+      "dotnet-ffi-multiseg": 1073.7,
+      "kotlin-ffi": 1006.6,
+      "kotlin-ffi-multiseg": 1080.3
     },
     {
       "payload": "32k",
       "label": "32 KB",
-      "dotnet-managed-rom": 7937.0,
-      "dotnet-managed-multiseg": 16426.4,
-      "pure-c": 7374.7,
-      "dotnet-ffi": 7542.6,
-      "kotlin-ffi": 7582.3
+      "dotnet-managed-rom": 7916.3,
+      "dotnet-managed-multiseg": 16754.6,
+      "pure-c": 7660.9,
+      "pure-c-multiseg": 8446.1,
+      "dotnet-ffi": 7512.9,
+      "dotnet-ffi-multiseg": 8489.3,
+      "kotlin-ffi": 7538.9,
+      "kotlin-ffi-multiseg": 8342.6
     }
   ]
 }
