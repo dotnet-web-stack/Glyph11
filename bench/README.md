@@ -33,19 +33,21 @@ benchmarks page.
 
 | Payload | C# Ultra | Pure C  | C# (FFI) | Kotlin (FFI) |
 |---------|---------:|--------:|---------:|-------------:|
-| ~95 B   | 118 ns   | 98 ns   | 97 ns    | 102 ns |
-| 4 KB    | 730 ns   | 512 ns  | 556 ns   | 574 ns |
-| 32 KB   | 5028 ns  | 3784 ns | 4254 ns  | 4167 ns |
+| ~95 B   | 114 ns   | 95 ns   | 95 ns    | 100 ns |
+| 4 KB    | 710 ns   | 517 ns  | 548 ns   | 556 ns |
+| 32 KB   | 5180 ns  | 3767 ns | 4120 ns  | 4134 ns |
 
-**Multi-segment** (3 segments):
+**Multi-segment** (3 segments — each linearized into a *reused* buffer, then parsed):
 
 | Payload | C# Ultra | Pure C  | C# (FFI) | Kotlin (FFI) |
 |---------|---------:|--------:|---------:|-------------:|
-| ~95 B   | 257 ns   | 101 ns  | 106 ns   | 111 ns |
-| 4 KB    | 1363 ns  | 545 ns  | 587 ns   | 603 ns |
-| 32 KB   | 9262 ns  | 4256 ns | 4624 ns  | 4658 ns |
+| ~95 B   | 125 ns   | 99 ns   | 106 ns   | 110 ns |
+| 4 KB    | 751 ns   | 546 ns  | 601 ns   | 585 ns |
+| 32 KB   | 5606 ns  | 4222 ns | 4521 ns  | 4617 ns |
 
-The FFI bindings track the pure-C floor (`[SuppressGCTransition]` for .NET,
-reused off-heap buffers for Kotlin). Native multi-segment = contiguous + a
-`memcpy`, so it stays close to contiguous and ~2× faster than the managed
-multi-segment path (which allocates per call). Numbers vary run-to-run.
+Every parser linearizes the segments into a **reused buffer**, so multi-segment =
+contiguous + a `memcpy` for all of them and the native-vs-managed gap stays the
+same as contiguous — it's the parse engine, not the allocation. (The managed
+`TryExtractFullHeaderValidated` *convenience* API would `input.ToArray()` instead,
+a per-call allocation that makes it ~1.6× slower at 32 KB; the bench linearizes
+manually so the comparison is apples-to-apples.) Numbers vary run-to-run.
