@@ -207,6 +207,8 @@ jobs:
         print('Cleaned stale benchmark entries.')
         "
         cd /tmp/gh-pages
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         if git diff --quiet; then
           echo "No changes to commit."
         else
