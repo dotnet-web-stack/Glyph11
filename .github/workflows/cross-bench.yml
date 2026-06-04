@@ -48,15 +48,15 @@ jobs:
           cd /tmp/gh-pages
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet; then
+          git add benchmarks/cross-lang.json
+          if git diff --cached --quiet; then
             echo "No change."
           else
-            git add benchmarks/cross-lang.json
             git commit -m "Update cross-language benchmark results"
             git push origin gh-pages
           fi
           cd -
-          git worktree remove /tmp/gh-pages
+          git worktree remove --force /tmp/gh-pages
 
       - name: Rebuild docs site
         if: ${{ always() && github.ref == 'refs/heads/main' }}
