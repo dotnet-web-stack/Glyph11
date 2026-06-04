@@ -123,9 +123,11 @@ internal static class CsvBench
             double mRom = Best(iters, () => { req.Clear(); var r = rom; UltraHardenedParser.TryExtractFullHeaderROM(ref r, req, in ManagedLimits, out _); });
             Console.WriteLine($"dotnet-managed-rom,{name},{mRom:F1}");
 
-            // managed — multi-segment: the library's real path. TryExtractFullHeaderValidated
-            // linearizes via input.ToArray() (a fresh allocation every request), then ROM-parses.
-            double mSeg = Best(iters, () => { req.Clear(); var s = seq; UltraHardenedParser.TryExtractFullHeaderValidated(ref s, req, in ManagedLimits, out _); });
+            // managed — multi-segment: linearize into the SAME reused buffer as the native paths,
+            // then ROM-parse, so the column compares the parser, not the linearization strategy.
+            // (The one-shot API TryExtractFullHeaderValidated would input.ToArray() instead — an
+            // allocation per request; that's an API cost, noted on the page/README, not here.)
+            double mSeg = Best(iters, () => { req.Clear(); seq.CopyTo(lin); ReadOnlyMemory<byte> r = lin; UltraHardenedParser.TryExtractFullHeaderROM(ref r, req, in ManagedLimits, out _); });
             Console.WriteLine($"dotnet-managed-multiseg,{name},{mSeg:F1}");
 
             // native binding (FFI) — contiguous

@@ -51,11 +51,11 @@
     managed parser; <b>Pure C</b> is the native core; the bindings reach that core from .NET and the
     JVM. The bindings call the same C, so the native columns are within measurement noise of each
     other — the meaningful gap is native vs. managed. Multi-segment must be linearized into a
-    contiguous buffer first, and that copy is counted in every multi-seg number: the managed parser
-    does it via <code>TryExtractFullHeaderValidated</code> (a per-request <code>ToArray</code>
-    allocation), while the single-slab native core lets the bindings linearize into a reused scratch
-    buffer — so the multi-seg gap reflects that allocation, which a managed caller can also avoid by
-    hand-rolling <code>CopyTo</code>&nbsp;+&nbsp;ROM.
+    contiguous buffer first; that per-request copy is counted in every multi-seg number, using a
+    reused scratch buffer for <em>every</em> parser so the column compares the parser, not the copy.
+    (The managed one-shot API <code>TryExtractFullHeaderValidated</code> instead allocates that
+    buffer via <code>ToArray</code> each request — an API cost you avoid by hand-rolling
+    <code>CopyTo</code>&nbsp;+&nbsp;ROM.)
     <br><a href="https://github.com/dotnet-web-stack/Glyph11">github.com/dotnet-web-stack/Glyph11</a>
   </footer>
 

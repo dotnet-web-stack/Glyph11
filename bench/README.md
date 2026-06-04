@@ -33,23 +33,28 @@ benchmarks page.
 
 | Payload | C# Ultra | Pure C  | C# (FFI) | Kotlin (FFI) |
 |---------|---------:|--------:|---------:|-------------:|
-| ~95 B   | 116 ns   | 95 ns   | 96 ns    | 101 ns |
-| 4 KB    | 728 ns   | 529 ns  | 554 ns   | 585 ns |
-| 32 KB   | 5067 ns  | 3852 ns | 4203 ns  | 4226 ns |
+| ~95 B   | 118 ns   | 97 ns   | 98 ns    | 100 ns |
+| 4 KB    | 727 ns   | 522 ns  | 562 ns   | 562 ns |
+| 32 KB   | 5039 ns  | 3906 ns | 4122 ns  | 4182 ns |
 
-**Multi-segment** (3 segments — linearization always counted):
+**Multi-segment** (3 segments — every parser linearizes into a reused buffer, copy counted):
 
 | Payload | C# Ultra | Pure C  | C# (FFI) | Kotlin (FFI) |
 |---------|---------:|--------:|---------:|-------------:|
-| ~95 B   | 252 ns   | 100 ns  | 107 ns   | 112 ns |
-| 4 KB    | 1346 ns  | 560 ns  | 600 ns   | 602 ns |
-| 32 KB   | 9202 ns  | 4444 ns | 4634 ns  | 4773 ns |
+| ~95 B   | 130 ns   | 102 ns  | 110 ns   | 120 ns |
+| 4 KB    | 753 ns   | 553 ns  | 612 ns   | 592 ns |
+| 32 KB   | 5406 ns  | 4324 ns | 4567 ns  | 4795 ns |
 
-Multi-segment input **must** be linearized into a contiguous buffer first — that
-copy is in every number above. The managed column is the library's real path,
-`TryExtractFullHeaderValidated`, which linearizes via `input.ToArray()` (a fresh
-allocation every request). The single-slab native core lets the bindings linearize
-into a **reused** scratch buffer, avoiding that per-request allocation — ~2× faster
-at 32 KB. That gap is a usage advantage, not a parser difference: a managed caller
-can match it by hand-rolling `CopyTo` + ROM (≈ contiguous + a memcpy). Numbers vary
-run-to-run.
+Multi-segment input must be linearized into a contiguous buffer first — that
+per-request copy is counted in every number above. To compare the **parsers** (not
+buffer strategy), every path linearizes the same way — `CopyTo`/`memcpy` into a
+**reused** scratch buffer, then parse — so multi-segment = contiguous + a `memcpy`
+for all of them, and native stays ~1.2× ahead in both modes (the parse engine).
+
+> The managed one-shot API `TryExtractFullHeaderValidated` instead allocates that
+> buffer via `input.ToArray()` **every request** — ~9.2 µs vs ~5.4 µs at 32 KB. For a
+> multi-segment hot path, hand-roll `CopyTo` + `TryExtractFullHeaderROM` (or, for the
+> binding, linearize into a reused buffer before the native call). It's an API cost,
+> not a parser difference — hence a note, not the comparison.
+
+Numbers vary run-to-run.
