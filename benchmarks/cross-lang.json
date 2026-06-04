@@ -1,0 +1,47 @@
+{
+  "unit": "ns/op",
+  "langs": [
+    {
+      "key": "pure-c",
+      "label": "Pure C"
+    },
+    {
+      "key": "dotnet-ffi",
+      "label": "C# (FFI)"
+    },
+    {
+      "key": "kotlin-ffi",
+      "label": "Kotlin (FFI)"
+    },
+    {
+      "key": "dotnet-managed",
+      "label": "C# managed (ref)"
+    }
+  ],
+  "rows": [
+    {
+      "payload": "small",
+      "label": "~95 B",
+      "pure-c": 182.6,
+      "dotnet-ffi": 169.2,
+      "kotlin-ffi": 181.7,
+      "dotnet-managed": 266.9
+    },
+    {
+      "payload": "4k",
+      "label": "4 KB",
+      "pure-c": 1026.9,
+      "dotnet-ffi": 988.8,
+      "kotlin-ffi": 997.7,
+      "dotnet-managed": 1183.0
+    },
+    {
+      "payload": "32k",
+      "label": "32 KB",
+      "pure-c": 8213.0,
+      "dotnet-ffi": 8019.8,
+      "kotlin-ffi": 5825.1,
+      "dotnet-managed": 8387.8
+    }
+  ]
+}
