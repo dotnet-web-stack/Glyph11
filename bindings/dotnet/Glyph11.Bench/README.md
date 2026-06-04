@@ -15,17 +15,22 @@ GLYPH11_NATIVE_PATH="$PWD/core/build-rel/libglyph11.so" \
   dotnet run -c Release --project bindings/dotnet/Glyph11.Bench
 ```
 
-## Results — scalar C core (gcc 13 -O3, .NET 10, x86-64)
+## Results (gcc 13 -O3, .NET 10, x86-64)
 
-| Payload | Managed | Native (FFI) | Ratio |
-|---------|--------:|-------------:|:------|
-| ~80 B   | 129 ns  | **94 ns**    | native **0.73×** (faster) |
-| 4 KB    | 697 ns  | 1,244 ns     | native 1.78× (slower) |
-| 32 KB   | 4.80 µs | 10.0 µs      | native 2.08× (slower) |
+| Payload | Managed | Native FFI (scalar) | Native FFI (SSE2) | vs managed |
+|---------|--------:|--------------------:|------------------:|:-----------|
+| ~80 B   | 128 ns  |  94 ns              | **91 ns**         | **0.71×** (faster) |
+| 4 KB    | 690 ns  | 1,244 ns            | **540 ns**        | **0.78×** (faster) |
+| 32 KB   | 4.88 µs | 10.0 µs             | **4.00 µs**       | **0.82×** (faster) |
 
-**Read:** the P/Invoke overhead is *not* the bottleneck — native wins on small
-requests (the common case). The managed parser pulls ahead on large payloads
-because it validates character classes with hardware SIMD
-(`SearchValues<byte>` / `IndexOfAnyExcept`), while the C core validates scalar,
-byte-by-byte. SIMD in the C core is the lever to close that gap — see the SIMD
-work in `core/`.
+**Read:**
+
+- P/Invoke overhead is *not* the bottleneck — with `[SuppressGCTransition]`,
+  native wins even on tiny requests (the common case).
+- With **scalar** character-class validation the C core lost on large payloads
+  (1.8–2.1×): the managed parser validates with hardware SIMD
+  (`SearchValues<byte>` / `IndexOfAnyExcept`).
+- Adding **SSE2** scanning to the C core (header-value + request-target
+  validation) flipped it: the native parser is now **faster than the managed
+  parser at every size**, ~2.3–2.5× faster than its own scalar version on
+  4 KB / 32 KB. Parity with C# is preserved (1M-input differential, ASan-clean).

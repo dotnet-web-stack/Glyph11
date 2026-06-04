@@ -10,6 +10,9 @@
  */
 #include "glyph11.h"
 #include <string.h>   /* memchr, memcmp */
+#if defined(__SSE2__)
+#  include <emmintrin.h>
+#endif
 
 /* ======================================================================== */
 /*  Versioning / limits / status                                            */
@@ -117,11 +120,62 @@ static int is_reqtarget(uint8_t c)
     return c >= 0x20 && c <= 0x7E;
 }
 
-/* index of first byte failing pred, or -1 if all pass */
+/* index of first byte failing pred, or -1 if all pass (scalar; used for the
+   short token scans — method and header names) */
 static long first_invalid(const uint8_t* p, size_t len, int (*pred)(uint8_t))
 {
     for (size_t i = 0; i < len; i++)
         if (!pred(p[i])) return (long)i;
+    return -1;
+}
+
+/* Range-class scanners for the long, hot fields (header value, request-target).
+   SSE2-accelerated; scalar fallback elsewhere. (NEON is a TODO pending ARM CI;
+   the scalar fallback keeps non-x86 correct, just not vectorized.) */
+
+/* index of first byte not a valid field-value char (RFC 9110 §5.5), or -1.
+   valid = HTAB(0x09) | (b >= 0x20 & b != 0x7F)  [obs-text 0x80-0xFF allowed] */
+static long scan_fieldvalue(const uint8_t* p, size_t len)
+{
+    size_t i = 0;
+#if defined(__SSE2__)
+    const __m128i c09 = _mm_set1_epi8(0x09);
+    const __m128i c20 = _mm_set1_epi8(0x20);
+    const __m128i c7f = _mm_set1_epi8(0x7F);
+    for (; i + 16 <= len; i += 16) {
+        __m128i v     = _mm_loadu_si128((const __m128i*)(p + i));
+        __m128i ge20  = _mm_cmpeq_epi8(_mm_max_epu8(v, c20), v);   /* b >= 0x20 */
+        __m128i htab  = _mm_cmpeq_epi8(v, c09);
+        __m128i del   = _mm_cmpeq_epi8(v, c7f);
+        __m128i valid = _mm_or_si128(htab, _mm_andnot_si128(del, ge20));
+        unsigned mask = (unsigned)_mm_movemask_epi8(valid) & 0xFFFFu;
+        if (mask != 0xFFFFu)
+            return (long)(i + (size_t)__builtin_ctz((~mask) & 0xFFFFu));
+    }
+#endif
+    for (; i < len; i++) if (!is_fieldvalue(p[i])) return (long)i;
+    return -1;
+}
+
+/* index of first byte not a valid request-target char (SP + VCHAR), or -1.
+   valid = (b >= 0x20 & b <= 0x7E) */
+static long scan_reqtarget(const uint8_t* p, size_t len)
+{
+    size_t i = 0;
+#if defined(__SSE2__)
+    const __m128i c20 = _mm_set1_epi8(0x20);
+    const __m128i c7e = _mm_set1_epi8(0x7E);
+    for (; i + 16 <= len; i += 16) {
+        __m128i v     = _mm_loadu_si128((const __m128i*)(p + i));
+        __m128i ge20  = _mm_cmpeq_epi8(_mm_max_epu8(v, c20), v);   /* b >= 0x20 */
+        __m128i le7e  = _mm_cmpeq_epi8(_mm_min_epu8(v, c7e), v);   /* b <= 0x7E */
+        __m128i valid = _mm_and_si128(ge20, le7e);
+        unsigned mask = (unsigned)_mm_movemask_epi8(valid) & 0xFFFFu;
+        if (mask != 0xFFFFu)
+            return (long)(i + (size_t)__builtin_ctz((~mask) & 0xFFFFu));
+    }
+#endif
+    for (; i < len; i++) if (!is_reqtarget(p[i])) return (long)i;
     return -1;
 }
 
@@ -341,7 +395,7 @@ glyph11_status glyph11_parse_request(
     size_t url_len   = second_space - url_start;
     if (url_len > L.max_url_len) return GLYPH11_ERR_URL_TOO_LONG;
     const uint8_t* url = buf + url_start;
-    if (first_invalid(url, url_len, is_reqtarget) >= 0) return GLYPH11_ERR_TARGET_CHAR;
+    if (scan_reqtarget(url, url_len) >= 0) return GLYPH11_ERR_TARGET_CHAR;
     req->target = (glyph11_span){(uint32_t)url_start, (uint32_t)url_len};
 
     /* ---- version ---- */
@@ -434,7 +488,7 @@ glyph11_status glyph11_parse_request(
         size_t val_len = line_end - val_abs;
         const uint8_t* val = buf + val_abs;
         if (val_len > L.max_header_value_len) return GLYPH11_ERR_HEADER_VALUE_TOO_LONG;
-        if (first_invalid(val, val_len, is_fieldvalue) >= 0) return GLYPH11_ERR_HEADER_VALUE;
+        if (scan_fieldvalue(val, val_len) >= 0) return GLYPH11_ERR_HEADER_VALUE;
 
         /* count + store */
         if (hcount >= L.max_header_count) return GLYPH11_ERR_TOO_MANY_HEADERS;
