@@ -135,12 +135,25 @@ object Glyph11 {
             val consumed = arena.allocate(ValueLayout.JAVA_LONG)
             val len = input.size.toLong()
 
+            // Limits matching the other benches (max 200 headers, 64 KiB total) so the
+            // 32 KB payload (153 headers) parses fully instead of being rejected early
+            // with TOO_MANY_HEADERS under the default 100-header cap.
+            val lim = arena.allocate(32)
+            lim.set(ValueLayout.JAVA_INT, 0L, 32)          // struct_size
+            lim.set(ValueLayout.JAVA_INT, 4L, 200)         // max_header_count
+            lim.set(ValueLayout.JAVA_INT, 8L, 256)         // max_header_name_length
+            lim.set(ValueLayout.JAVA_INT, 12L, 8192)       // max_header_value_length
+            lim.set(ValueLayout.JAVA_INT, 16L, 8192)       // max_url_length
+            lim.set(ValueLayout.JAVA_INT, 20L, 128)        // max_query_param_count
+            lim.set(ValueLayout.JAVA_INT, 24L, 16)         // max_method_length
+            lim.set(ValueLayout.JAVA_INT, 28L, 64 * 1024)  // max_total_header_bytes
+
             fun once() {
                 req.set(ValueLayout.ADDRESS, OFF_HEADERS, headers)
                 req.set(ValueLayout.JAVA_INT, OFF_HEADER_CAP, CAPACITY)
                 req.set(ValueLayout.ADDRESS, OFF_QUERY, query)
                 req.set(ValueLayout.JAVA_INT, OFF_QUERY_CAP, CAPACITY)
-                parseHandle.invoke(buf, len, MemorySegment.NULL, req, consumed)
+                parseHandle.invoke(buf, len, lim, req, consumed)
             }
 
             var w = 0L
