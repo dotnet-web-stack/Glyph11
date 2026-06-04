@@ -29,32 +29,27 @@ benchmarks page.
 
 ## Latest local run (best of 5 trials; .NET 10, JDK 21, x86-64)
 
-**Contiguous** (single buffer):
+**Contiguous** (single buffer — parsed in place, no linearization):
 
 | Payload | C# Ultra | Pure C  | C# (FFI) | Kotlin (FFI) |
 |---------|---------:|--------:|---------:|-------------:|
-| ~95 B   | 118 ns   | 97 ns   | 98 ns    | 100 ns |
-| 4 KB    | 727 ns   | 522 ns  | 562 ns   | 562 ns |
-| 32 KB   | 5039 ns  | 3906 ns | 4122 ns  | 4182 ns |
+| ~95 B   | 117 ns   | 96 ns   | 96 ns    | 101 ns |
+| 4 KB    | 723 ns   | 519 ns  | 549 ns   | 556 ns |
+| 32 KB   | 5123 ns  | 3808 ns | 4166 ns  | 4188 ns |
 
-**Multi-segment** (3 segments — every parser linearizes into a reused buffer, copy counted):
+**Multi-segment** (3 segments → linearize into a contiguous buffer, then parse):
 
 | Payload | C# Ultra | Pure C  | C# (FFI) | Kotlin (FFI) |
 |---------|---------:|--------:|---------:|-------------:|
-| ~95 B   | 130 ns   | 102 ns  | 110 ns   | 120 ns |
-| 4 KB    | 753 ns   | 553 ns  | 612 ns   | 592 ns |
-| 32 KB   | 5406 ns  | 4324 ns | 4567 ns  | 4795 ns |
+| ~95 B   | 255 ns   | 101 ns  | 107 ns   | 110 ns |
+| 4 KB    | 1345 ns  | 551 ns  | 599 ns   | 584 ns |
+| 32 KB   | 9028 ns  | 4217 ns | 4583 ns  | 4660 ns |
 
-Multi-segment input must be linearized into a contiguous buffer first — that
-per-request copy is counted in every number above. To compare the **parsers** (not
-buffer strategy), every path linearizes the same way — `CopyTo`/`memcpy` into a
-**reused** scratch buffer, then parse — so multi-segment = contiguous + a `memcpy`
-for all of them, and native stays ~1.2× ahead in both modes (the parse engine).
-
-> The managed one-shot API `TryExtractFullHeaderValidated` instead allocates that
-> buffer via `input.ToArray()` **every request** — ~9.2 µs vs ~5.4 µs at 32 KB. For a
-> multi-segment hot path, hand-roll `CopyTo` + `TryExtractFullHeaderROM` (or, for the
-> binding, linearize into a reused buffer before the native call). It's an API cost,
-> not a parser difference — hence a note, not the comparison.
-
-Numbers vary run-to-run.
+Single-segment parses the contiguous data in place — no buffer needed. Multi-segment
+must first linearize. The native bindings reuse one scratch buffer (allocated once per
+connection), so multi-segment costs only a `memcpy` over single-segment (~1.1×). The
+managed `TryExtractFullHeaderValidated` allocates a fresh array (`input.ToArray()`)
+**every request**, so its multi-segment pays a per-request GC allocation (~1.8–2.2×).
+**That allocation, not the copy, is the multi-segment cost** — the copy itself is only
+~425 ns at 32 KB (measured: parse 4114 + copy 425 ≈ copy-and-parse 4497). Numbers vary
+run-to-run.

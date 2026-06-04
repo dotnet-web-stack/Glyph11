@@ -50,12 +50,12 @@
     payloads, in <b>contiguous</b> and <b>multi-segment</b> modes. <b>C# Ultra</b> is the standalone
     managed parser; <b>Pure C</b> is the native core; the bindings reach that core from .NET and the
     JVM. The bindings call the same C, so the native columns are within measurement noise of each
-    other — the meaningful gap is native vs. managed. Multi-segment must be linearized into a
-    contiguous buffer first; that per-request copy is counted in every multi-seg number, using a
-    reused scratch buffer for <em>every</em> parser so the column compares the parser, not the copy.
-    (The managed one-shot API <code>TryExtractFullHeaderValidated</code> instead allocates that
-    buffer via <code>ToArray</code> each request — an API cost you avoid by hand-rolling
-    <code>CopyTo</code>&nbsp;+&nbsp;ROM.)
+    other. Single-segment parses the contiguous data in place; multi-segment must first linearize
+    the segments into a contiguous buffer. The native paths reuse one scratch buffer (allocated once
+    per connection), so that costs only a <code>memcpy</code> — multi-seg ≈ single-segment. The
+    managed <code>TryExtractFullHeaderValidated</code> allocates a fresh array (<code>ToArray</code>)
+    <em>every request</em>, so its multi-seg pays a per-request GC allocation (≈ 2× single-segment at
+    32&nbsp;KB) — that allocation, not the copy, is the multi-segment cost.
     <br><a href="https://github.com/dotnet-web-stack/Glyph11">github.com/dotnet-web-stack/Glyph11</a>
   </footer>
 
