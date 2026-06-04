@@ -25,7 +25,7 @@ GLYPH11_NATIVE_PATH="$so" dotnet run -c Release --project "$root/bindings/dotnet
     2>/dev/null | grep '^dotnet-' >>"$csv"
 
 # --- Kotlin (FFI) ---
-( cd "$root/bindings/kotlin" && GLYPH11_LIB="$so" gradle -q run --args="bench $pay" --console=plain 2>/dev/null ) \
+( cd "$root/bindings/kotlin" && GLYPH11_LIB="$so" ./gradlew -q run --args="bench $pay" --console=plain 2>/dev/null ) \
     | grep '^kotlin-' >>"$csv"
 
 echo "" >&2
