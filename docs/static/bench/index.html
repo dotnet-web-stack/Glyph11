@@ -14,7 +14,8 @@
   .card { border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem 1.2rem; margin: 1.3rem 0; }
   table { border-collapse: collapse; width: 100%; }
   th, td { padding: .5rem .65rem; border-bottom: 1px solid var(--line); text-align: right;
-           font-variant-numeric: tabular-nums; }
+           font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #table { overflow-x: auto; }
   th:first-child, td:first-child { text-align: left; }
   thead th { border-bottom: 2px solid #9ca3af; font-weight: 600; }
   td.best { font-weight: 700; color: #16a34a; }
@@ -49,7 +50,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
   <script>
-    const COLORS = ['#2563eb', '#7c3aed', '#16a34a', '#ea580c', '#db2777'];
+    // paired hues: contiguous = dark, multi-seg = light (managed, pure C, C# FFI, Kotlin)
+    const COLORS = ['#1d4ed8', '#93c5fd', '#15803d', '#86efac', '#c2410c', '#fdba74', '#6d28d9', '#c4b5fd'];
 
     fetch('data.json', { cache: 'no-store' })
       .then(r => { if (!r.ok) throw new Error('no data'); return r.json(); })
