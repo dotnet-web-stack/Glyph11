@@ -60,6 +60,10 @@ jobs:
 
       - name: Rebuild docs site
         if: ${{ always() && github.ref == 'refs/heads/main' }}
-        run: gh workflow run "Deploy Docs to GitHub Pages"
+        run: |
+          # Let the gh-pages push above replicate before the deploy re-fetches it,
+          # otherwise the deploy bakes the previous cross-lang.json (stale page).
+          sleep 45
+          gh workflow run "Deploy Docs to GitHub Pages"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
