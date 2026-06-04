@@ -38,6 +38,8 @@ jobs:
           mkdir -p docs/static/benchmarks
           git show origin/gh-pages:benchmarks/data.js > docs/static/benchmarks/data.js 2>/dev/null || true
           git show origin/gh-pages:benchmarks/cross-lang.json > docs/static/benchmarks/cross-lang.json 2>/dev/null || true
+          mkdir -p docs/static/bench
+          git show origin/gh-pages:benchmarks/cross-lang.json > docs/static/bench/data.json 2>/dev/null || true
 
       - name: Build
         run: hugo --minify --source docs

@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Diagnostics;
 using System.Text;
 using BenchmarkDotNet.Attributes;
@@ -8,6 +9,7 @@ using Glyph11.Native;
 using Glyph11.Parser;
 using Glyph11.Parser.UltraHardened;
 using Glyph11.Protocol;
+using Glyph11.Utils;
 
 // `csv <payload-dir>` emits CSV (dotnet-managed / dotnet-ffi) for the cross-language
 // aggregator, using the shared payload files. Default: the rich BenchmarkDotNet run.
@@ -114,13 +116,23 @@ internal static class CsvBench
         {
             var data = File.ReadAllBytes(Path.Combine(dir, file));
             var rom = (ReadOnlyMemory<byte>)data;
+            var seq = ThreeSegments(data);
 
+            // managed — ROM (single contiguous buffer)
             for (long i = 0; i < iters / 10 + 1; i++) { req.Clear(); var r = rom; UltraHardenedParser.TryExtractFullHeaderROM(ref r, req, in ManagedLimits, out _); }
             var sw = Stopwatch.StartNew();
             for (long i = 0; i < iters; i++) { req.Clear(); var r = rom; UltraHardenedParser.TryExtractFullHeaderROM(ref r, req, in ManagedLimits, out _); }
             sw.Stop();
-            Console.WriteLine($"dotnet-managed,{name},{sw.Elapsed.TotalNanoseconds / iters:F1}");
+            Console.WriteLine($"dotnet-managed-rom,{name},{sw.Elapsed.TotalNanoseconds / iters:F1}");
 
+            // managed — multi-segment (3 segments, linearized internally)
+            for (long i = 0; i < iters / 10 + 1; i++) { req.Clear(); var s = seq; UltraHardenedParser.TryExtractFullHeaderValidated(ref s, req, in ManagedLimits, out _); }
+            sw = Stopwatch.StartNew();
+            for (long i = 0; i < iters; i++) { req.Clear(); var s = seq; UltraHardenedParser.TryExtractFullHeaderValidated(ref s, req, in ManagedLimits, out _); }
+            sw.Stop();
+            Console.WriteLine($"dotnet-managed-multiseg,{name},{sw.Elapsed.TotalNanoseconds / iters:F1}");
+
+            // native binding (FFI)
             for (long i = 0; i < iters / 10 + 1; i++) Glyph11Parser.Parse(data, h, q, NativeLimits, out _);
             sw = Stopwatch.StartNew();
             for (long i = 0; i < iters; i++) Glyph11Parser.Parse(data, h, q, NativeLimits, out _);
@@ -128,5 +140,13 @@ internal static class CsvBench
             Console.WriteLine($"dotnet-ffi,{name},{sw.Elapsed.TotalNanoseconds / iters:F1}");
         }
         req.Dispose();
+    }
+
+    private static ReadOnlySequence<byte> ThreeSegments(byte[] d)
+    {
+        int s1 = d.Length / 3, s2 = 2 * d.Length / 3;
+        var first = new BufferSegment(d.AsMemory(0, s1));
+        var last = first.Append(d.AsMemory(s1, s2 - s1)).Append(d.AsMemory(s2));
+        return new ReadOnlySequence<byte>(first, 0, last, last.Memory.Length);
     }
 }
