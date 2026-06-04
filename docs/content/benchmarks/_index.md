@@ -68,32 +68,18 @@ These numbers are from CI runs (`ubuntu-latest`) and may differ from local resul
     fmtAlloc('Benchmarks.FlexibleParserBenchmark.' + rom),
     fmt(val('Benchmarks.FlexibleParserBenchmark.' + ms)) + ' ns',
     fmtAlloc('Benchmarks.FlexibleParserBenchmark.' + ms),
-    fmt(val('Benchmarks.HardenedParserBenchmark.' + rom)) + ' ns',
-    fmtAlloc('Benchmarks.HardenedParserBenchmark.' + rom),
-    fmt(val('Benchmarks.HardenedParserBenchmark.' + ms)) + ' ns',
-    fmtAlloc('Benchmarks.HardenedParserBenchmark.' + ms),
-  ]);
-
-  // --- RequestSemantics (combined) ---
-  const semSizes = [
-    ['Small', 'AllChecks_Small'],
-    ['4 KB',  'AllChecks_4K'],
-    ['32 KB', 'AllChecks_32K'],
-  ];
-  const semRows = semSizes.map(([label, method]) => [
-    label,
-    fmt(val('Benchmarks.AllSemanticChecksBenchmark.' + method)) + ' ns',
-    fmtAlloc('Benchmarks.AllSemanticChecksBenchmark.' + method),
+    fmt(val('Benchmarks.UltraHardenedParserBenchmark.' + rom)) + ' ns',
+    fmtAlloc('Benchmarks.UltraHardenedParserBenchmark.' + rom),
+    fmt(val('Benchmarks.UltraHardenedParserBenchmark.' + ms)) + ' ns',
+    fmtAlloc('Benchmarks.UltraHardenedParserBenchmark.' + ms),
   ]);
 
   container.innerHTML =
     '<h3>Parser Benchmarks</h3>' +
     makeTable(
-      ['Payload', 'Flexible (ROM)', 'Alloc', 'Flexible (MultiSeg)', 'Alloc', 'Hardened (ROM)', 'Alloc', 'Hardened (MultiSeg)', 'Alloc'],
+      ['Payload', 'Flexible (ROM)', 'Alloc', 'Flexible (MultiSeg)', 'Alloc', 'Ultra (ROM)', 'Alloc', 'Ultra (MultiSeg)', 'Alloc'],
       parserRows
-    ) +
-    '<h3>RequestSemantics (All Checks)</h3>' +
-    makeTable(['Payload', 'All Checks (ns)', 'Alloc'], semRows);
+    );
 })();
 </script>
 

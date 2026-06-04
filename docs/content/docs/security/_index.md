@@ -3,24 +3,25 @@ title: Security
 weight: 4
 ---
 
-Glyph11 provides two layers of security:
+Glyph11 delivers security through a single parser:
 
-1. **Parse-time validation** — The `HardenedParser` enforces RFC 9110/9112 syntax rules and resource limits during parsing.
-2. **Post-parse validation** — The `RequestSemantics` class detects protocol-level attacks after parsing.
+**`UltraHardenedParser`** enforces RFC 9110/9112 syntax rules, configurable resource limits, and semantic attack detection — all in one parse pass. Any violation throws `HttpParseException`.
 
-## Defense in Depth
+**`FlexibleParser`** performs no validation and is for trusted, pre-validated input only.
+
+## What UltraHardenedParser Catches
 
 ```
-Input → [HardenedParser] → [RequestSemantics] → Application
-         │                   │
-         ├─ Token validation ├─ Smuggling detection
-         ├─ Size limits      ├─ Path traversal
-         └─ Format checks    └─ Header conflicts
+Input → [UltraHardenedParser] → Application
+         │
+         ├─ Token & size validation   (syntax)
+         ├─ Smuggling detection       (semantic)
+         ├─ Path traversal            (semantic)
+         └─ Header conflicts          (semantic)
 ```
 
-The parser rejects malformed input (invalid characters, oversized fields, missing delimiters). Semantic checks catch valid-but-dangerous patterns like conflicting `Content-Length` headers or `Transfer-Encoding` combined with `Content-Length`.
+It rejects malformed input (invalid characters, oversized fields, missing delimiters) **and** valid-but-dangerous patterns like conflicting `Content-Length` headers or `Transfer-Encoding` combined with `Content-Length` — all during parsing, before your application sees the request.
 
 {{< cards >}}
   {{< card link="parser-limits" title="Parser Limits" subtitle="Configure resource limits for DoS prevention." >}}
-  {{< card link="request-semantics" title="Request Semantics" subtitle="Post-parse validation for protocol attacks." >}}
 {{< /cards >}}

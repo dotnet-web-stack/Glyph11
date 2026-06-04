@@ -7,9 +7,9 @@ Glyph11 provides two HTTP/1.1 header parsers with different security/performance
 
 ## Parser Comparison
 
-| Feature | HardenedParser | FlexibleParser |
-|---------|---------------|----------------|
-| **Namespace** | `Glyph11.Parser.Hardened` | `Glyph11.Parser.FlexibleParser` |
+| Feature | UltraHardenedParser | FlexibleParser |
+|---------|---------------------|----------------|
+| **Namespace** | `Glyph11.Parser.UltraHardened` | `Glyph11.Parser.FlexibleParser` |
 | **Validation** | RFC 9110/9112 compliant | Minimal |
 | **Resource limits** | Configurable via `ParserLimits` | None |
 | **Method validation** | Token characters only | None |
@@ -19,12 +19,13 @@ Glyph11 provides two HTTP/1.1 header parsers with different security/performance
 | **Obs-fold rejection** | Yes | No |
 | **HTTP version** | Format validated (`HTTP/X.Y`) | Not validated |
 | **Malformed lines** | Throws `HttpParseException` | Silently skipped |
+| **Semantic checks** | Enforced inline (smuggling, traversal, Host, ...) | None |
 | **Multi-segment** | Auto-linearizes to ROM path | Auto-linearizes to ROM path |
 | **SIMD-accelerated** | Yes (`SearchValues<byte>`) | N/A |
 
 ## Choosing a Parser
 
-**Use `HardenedParser`** (recommended) when:
+**Use `UltraHardenedParser`** (recommended) when:
 
 - Parsing untrusted input from the network
 - Building internet-facing HTTP servers
@@ -38,14 +39,10 @@ Glyph11 provides two HTTP/1.1 header parsers with different security/performance
 
 ## Performance
 
-The HardenedParser adds ~1.4-1.6x overhead over FlexibleParser for full RFC compliance. Validation uses SIMD-accelerated `SearchValues<byte>` and `IndexOfAnyExcept` to minimize the cost.
+`UltraHardenedParser` adds a small constant-factor overhead over `FlexibleParser` for full RFC compliance and semantic validation. Validation uses SIMD-accelerated `SearchValues<byte>` and `IndexOfAnyExcept` to minimize the cost; the semantic checks are fused into the header and path passes.
 
-| Payload | HardenedParser (ROM) | FlexibleParser (ROM) | Overhead |
-|---------|--------------------:|--------------------:|:--------:|
-| ~80B    | 93.5 ns             | 68.8 ns             | 1.36x    |
-| 1KB     | 213.0 ns            | 142.3 ns            | 1.50x    |
-| 4KB     | 675.8 ns            | 415.2 ns            | 1.63x    |
+See the [Benchmarks](/Glyph11/benchmarks/) page for the latest ROM and multi-segment numbers across payload sizes.
 
 {{< callout type="info" >}}
-Both parsers validate HTTP syntax. For semantic checks (request smuggling, path traversal), use [`RequestSemantics`](../security/request-semantics) after parsing.
+`UltraHardenedParser` performs both syntax and semantic validation inline. `FlexibleParser` performs neither — use it only for trusted, pre-validated input.
 {{< /callout >}}

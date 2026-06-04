@@ -10,7 +10,7 @@ namespace Glyph11.Parser.FlexibleParser;
 /// Optimized for throughput; silently skips malformed header lines
 /// and does not enforce RFC token/field-value rules.
 /// <para>
-/// For security-sensitive workloads, use <see cref="HardenedParser"/> instead.
+/// For security-sensitive workloads, use <see cref="UltraHardenedParser"/> instead.
 /// </para>
 /// </summary>
 [SkipLocalsInit]

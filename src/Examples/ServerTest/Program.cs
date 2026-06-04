@@ -5,7 +5,7 @@ using System.Net.Sockets;
 using System.Text;
 using Glyph11;
 using Glyph11.Parser;
-using Glyph11.Parser.Hardened;
+using Glyph11.Parser.UltraHardened;
 using Glyph11.Protocol;
 using Glyph11.Validation;
 
@@ -69,7 +69,7 @@ static async Task HandleClientAsync(TcpClient client, CancellationToken ct)
                         // TODO FOR SINGLE SEQUENCE THERE ARE NO ALLOCATIONS, FOR MULTI SEGMENT THERE ARE, THAT INTERFERES THE BEHAVIOR
                         // TODO MEANING WE CANT ADVANCE FOR SINGLE SEGMENT CASE
                         
-                        if (HardenedParser.TryExtractFullHeader(ref sequence, request, in limits, out var bytesRead))
+                        if (UltraHardenedParser.TryExtractFullHeaderValidated(ref sequence, request, in limits, out var bytesRead))
                         {
                             Console.WriteLine(Encoding.UTF8.GetString(sequence));
                             
@@ -109,30 +109,9 @@ static async Task HandleClientAsync(TcpClient client, CancellationToken ct)
                     }
                 }
 
-                // ── Phase 2: semantic validation ───────────────────
-                // request slices still point into the live pipe buffer.
-                if (RequestSemantics.HasTransferEncodingWithContentLength(request) ||
-                    RequestSemantics.HasConflictingContentLength(request) ||
-                    RequestSemantics.HasConflictingCommaSeparatedContentLength(request) ||
-                    RequestSemantics.HasInvalidContentLengthFormat(request) ||
-                    RequestSemantics.HasContentLengthWithLeadingZeros(request) ||
-                    RequestSemantics.HasInvalidHostHeaderCount(request) ||
-                    RequestSemantics.HasInvalidHostFormat(request) ||
-                    RequestSemantics.HasInvalidTransferEncoding(request) ||
-                    RequestSemantics.HasAsteriskFormWithoutOptions(request) ||
-                    RequestSemantics.HasInvalidConnectRequest(request) ||
-                    RequestSemantics.HasDotSegments(request) ||
-                    RequestSemantics.HasFragmentInRequestTarget(request) ||
-                    RequestSemantics.HasBackslashInPath(request) ||
-                    RequestSemantics.HasDoubleEncoding(request) ||
-                    RequestSemantics.HasEncodedNullByte(request) ||
-                    RequestSemantics.HasOverlongUtf8(request))
-                {
-                    reader.AdvanceTo(headerBuffer.End);
-                    await stream.WriteAsync(MakeErrorResponse(400, "Bad Request"), ct);
-                    await reader.CompleteAsync();
-                    return;
-                }
+                // ── Phase 2: validation ────────────────────────────
+                // No work needed — UltraHardenedParser enforced all structural and
+                // semantic checks during Phase 1 parsing (it throws on any violation).
 
                 // ── Phase 3: extract values & detect framing ───────
                 // Copy what we need out of the pipe buffer, then release it.

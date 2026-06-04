@@ -16,7 +16,7 @@ public readonly record struct ParserLimits
     public int MaxUrlLength             { get; init; }  // default: 8192
     public int MaxQueryParameterCount   { get; init; }  // default: 128
     public int MaxMethodLength          { get; init; }  // default: 16
-    public int MaxTotalHeaderBytes      { get; init; }  // default: 32768
+    public int MaxTotalHeaderBytes      { get; init; }  // default: 1048576
 
     public static ParserLimits Default { get; }
 }
@@ -33,7 +33,7 @@ var strict = ParserLimits.Default with
     MaxTotalHeaderBytes = 16384
 };
 
-HardenedParser.TryExtractFullHeader(ref buffer, request, in strict, out bytesRead);
+UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in strict, out bytesRead);
 ```
 
 ## Limit Reference
@@ -46,7 +46,7 @@ HardenedParser.TryExtractFullHeader(ref buffer, request, in strict, out bytesRea
 | `MaxUrlLength` | 8192 | Maximum length of the request URL |
 | `MaxQueryParameterCount` | 128 | Maximum number of query string parameters |
 | `MaxMethodLength` | 16 | Maximum length of the HTTP method |
-| `MaxTotalHeaderBytes` | 32768 | Maximum total bytes for the entire header section |
+| `MaxTotalHeaderBytes` | 1048576 | Maximum total bytes for the entire header section (1 MiB) |
 
 ## Examples
 

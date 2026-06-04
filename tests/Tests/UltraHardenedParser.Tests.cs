@@ -2,7 +2,6 @@ using System.Buffers;
 using System.Text;
 using Glyph11.Parser;
 using Glyph11.Protocol;
-using Glyph11.Parser.Hardened;
 using Glyph11.Parser.UltraHardened;
 using Glyph11.Utils;
 
@@ -10,8 +9,8 @@ namespace Tests;
 
 /// <summary>
 /// Tests for UltraHardenedParser (fused parse + semantic validation).
-/// Structural parsing is identical to HardenedParser; the key difference
-/// is that all RequestSemantics checks are enforced inline during parsing.
+/// Performs full RFC 9110/9112 structural parsing with all semantic
+/// checks enforced inline during parsing.
 /// Split across partial files:
 ///   - UltraHardenedParser.Parsing.cs     — core parsing (valid requests need Host)
 ///   - UltraHardenedParser.Semantics.cs   — fused semantic checks (throw on violation)

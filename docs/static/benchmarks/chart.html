@@ -43,7 +43,6 @@
 <div id="loading"><em>Loading benchmark data...</em></div>
 <div id="content" style="display:none">
   <div id="parser-section"></div>
-  <div id="semantics-section"></div>
 </div>
 
 <script src="data.js"></script>
@@ -263,8 +262,7 @@
   // Render sections
   const sectionConfig = [
     { key: 'Benchmarks.FlexibleParserBenchmark', heading: 'FlexibleParser', target: 'parser-section' },
-    { key: 'Benchmarks.HardenedParserBenchmark', heading: 'HardenedParser', target: 'parser-section' },
-    { key: 'Benchmarks.AllSemanticChecksBenchmark', heading: 'RequestSemantics (Combined)', target: 'semantics-section' },
+    { key: 'Benchmarks.UltraHardenedParserBenchmark', heading: 'UltraHardenedParser', target: 'parser-section' },
   ];
 
   const rendered = new Set();
