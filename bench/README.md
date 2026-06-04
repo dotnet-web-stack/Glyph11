@@ -33,21 +33,23 @@ benchmarks page.
 
 | Payload | C# Ultra | Pure C  | C# (FFI) | Kotlin (FFI) |
 |---------|---------:|--------:|---------:|-------------:|
-| ~95 B   | 114 ns   | 95 ns   | 95 ns    | 100 ns |
-| 4 KB    | 710 ns   | 517 ns  | 548 ns   | 556 ns |
-| 32 KB   | 5180 ns  | 3767 ns | 4120 ns  | 4134 ns |
+| ~95 B   | 116 ns   | 95 ns   | 96 ns    | 101 ns |
+| 4 KB    | 728 ns   | 529 ns  | 554 ns   | 585 ns |
+| 32 KB   | 5067 ns  | 3852 ns | 4203 ns  | 4226 ns |
 
-**Multi-segment** (3 segments — each linearized into a *reused* buffer, then parsed):
+**Multi-segment** (3 segments — linearization always counted):
 
 | Payload | C# Ultra | Pure C  | C# (FFI) | Kotlin (FFI) |
 |---------|---------:|--------:|---------:|-------------:|
-| ~95 B   | 125 ns   | 99 ns   | 106 ns   | 110 ns |
-| 4 KB    | 751 ns   | 546 ns  | 601 ns   | 585 ns |
-| 32 KB   | 5606 ns  | 4222 ns | 4521 ns  | 4617 ns |
+| ~95 B   | 252 ns   | 100 ns  | 107 ns   | 112 ns |
+| 4 KB    | 1346 ns  | 560 ns  | 600 ns   | 602 ns |
+| 32 KB   | 9202 ns  | 4444 ns | 4634 ns  | 4773 ns |
 
-Every parser linearizes the segments into a **reused buffer**, so multi-segment =
-contiguous + a `memcpy` for all of them and the native-vs-managed gap stays the
-same as contiguous — it's the parse engine, not the allocation. (The managed
-`TryExtractFullHeaderValidated` *convenience* API would `input.ToArray()` instead,
-a per-call allocation that makes it ~1.6× slower at 32 KB; the bench linearizes
-manually so the comparison is apples-to-apples.) Numbers vary run-to-run.
+Multi-segment input **must** be linearized into a contiguous buffer first — that
+copy is in every number above. The managed column is the library's real path,
+`TryExtractFullHeaderValidated`, which linearizes via `input.ToArray()` (a fresh
+allocation every request). The single-slab native core lets the bindings linearize
+into a **reused** scratch buffer, avoiding that per-request allocation — ~2× faster
+at 32 KB. That gap is a usage advantage, not a parser difference: a managed caller
+can match it by hand-rolling `CopyTo` + ROM (≈ contiguous + a memcpy). Numbers vary
+run-to-run.

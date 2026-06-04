@@ -50,9 +50,12 @@
     payloads, in <b>contiguous</b> and <b>multi-segment</b> modes. <b>C# Ultra</b> is the standalone
     managed parser; <b>Pure C</b> is the native core; the bindings reach that core from .NET and the
     JVM. The bindings call the same C, so the native columns are within measurement noise of each
-    other — the meaningful gap is native vs. managed. Multi-segment linearizes the 3 segments into a
-    reused buffer (a memcpy, no per-call allocation) for every implementation, so that gap stays the
-    parse engine, not the allocation.
+    other — the meaningful gap is native vs. managed. Multi-segment must be linearized into a
+    contiguous buffer first, and that copy is counted in every multi-seg number: the managed parser
+    does it via <code>TryExtractFullHeaderValidated</code> (a per-request <code>ToArray</code>
+    allocation), while the single-slab native core lets the bindings linearize into a reused scratch
+    buffer — so the multi-seg gap reflects that allocation, which a managed caller can also avoid by
+    hand-rolling <code>CopyTo</code>&nbsp;+&nbsp;ROM.
     <br><a href="https://github.com/dotnet-web-stack/Glyph11">github.com/dotnet-web-stack/Glyph11</a>
   </footer>
 
