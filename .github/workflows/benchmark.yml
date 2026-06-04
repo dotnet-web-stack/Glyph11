@@ -162,12 +162,14 @@ jobs:
         benchmark-data-dir-path: benchmarks
         max-items-in-chart: 15
         alert-threshold: '115%'
-        fail-on-alert: true
+        # This job publishes the baseline; it must not fail on noise (the FastConfig
+        # runs only 1-3 iterations). Regressions are still surfaced via the summary.
+        fail-on-alert: false
         comment-on-alert: true
         summary-always: true
 
     - name: Clean stale benchmark entries from gh-pages
-      if: github.ref == 'refs/heads/main'
+      if: ${{ always() && github.ref == 'refs/heads/main' }}
       run: |
         git fetch origin gh-pages
         git worktree add /tmp/gh-pages gh-pages
@@ -216,7 +218,7 @@ jobs:
         git worktree remove /tmp/gh-pages
 
     - name: Rebuild docs site
-      if: github.ref == 'refs/heads/main'
+      if: ${{ always() && github.ref == 'refs/heads/main' }}
       run: gh workflow run "Deploy Docs to GitHub Pages"
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
