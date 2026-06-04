@@ -1,15 +1,17 @@
 # Glyph11 Security Model
 
-Glyph11 provides two layers of defense against HTTP/1.1 protocol attacks:
+Glyph11's security is delivered by **`UltraHardenedParser`**, which enforces RFC 9110/9112 syntax rules, configurable resource limits, and semantic attack detection in a single parse pass. Any violation throws `HttpParseException`.
 
-1. **Parse-time validation** (`HardenedParser`) — rejects malformed input during parsing
-2. **Post-parse validation** (`RequestSemantics`) — detects semantically dangerous patterns after parsing
+`FlexibleParser` performs **no** validation and is intended only for trusted, pre-validated input (for example, behind a hardened reverse proxy). Pick one:
+
+- **Untrusted / internet-facing input** → `UltraHardenedParser`
+- **Trusted / pre-validated input** → `FlexibleParser`
 
 ---
 
-## Parse-Time Protections (HardenedParser)
+## Syntactic Protections
 
-These checks are enforced automatically during `TryExtractFullHeader` / `TryExtractFullHeaderROM`. Violations throw `HttpParseException`.
+These checks are enforced during `TryExtractFullHeaderValidated` / `TryExtractFullHeaderROM`. Violations throw `HttpParseException`.
 
 ### Bare LF Rejection
 
@@ -118,35 +120,35 @@ All limits are configurable via `ParserLimits`:
 | `MaxUrlLength` | 8192 | URL buffer overflow |
 | `MaxQueryParameterCount` | 128 | Query parameter flooding |
 | `MaxMethodLength` | 16 | Oversized method strings |
-| `MaxTotalHeaderBytes` | 32768 | Total header section DoS |
+| `MaxTotalHeaderBytes` | 1048576 | Total header section DoS |
 
 ---
 
-## Post-Parse Protections (RequestSemantics)
+## Semantic Protections
 
-These checks are called explicitly after successful parsing. Each returns `true` if the attack pattern is detected.
+`UltraHardenedParser` also detects semantically dangerous patterns inline during the same pass — no separate post-parse step is required. Each violation throws `HttpParseException`.
 
 ### Request Smuggling
 
-#### `HasTransferEncodingWithContentLength`
+#### Transfer-Encoding + Content-Length
 
 **Attack:** CL.TE / TE.CL request smuggling. When both `Transfer-Encoding` and `Content-Length` are present, front-end and back-end may disagree on message body boundaries.
 
 **RFC:** 9112 Section 6.1
 
-#### `HasConflictingContentLength`
+#### Conflicting Content-Length Headers
 
 **Attack:** Multiple `Content-Length` headers with different values. One system uses the first value, another uses the last.
 
 **RFC:** 9110 Section 8.6
 
-#### `HasConflictingCommaSeparatedContentLength`
+#### Conflicting Comma-Separated Content-Length
 
 **Attack:** A single `Content-Length` header with comma-separated values that differ (e.g. `Content-Length: 42, 0`).
 
 **RFC:** 9112 Section 6.2
 
-#### `HasInvalidContentLengthFormat`
+#### Invalid Content-Length Format
 
 **Attack:** Non-digit characters in Content-Length values (`Content-Length: abc`, `Content-Length: 1 2`, `Content-Length: 1e5`). Different parsers interpret these differently.
 
@@ -154,13 +156,13 @@ These checks are called explicitly after successful parsing. Each returns `true`
 
 **CVEs prevented:** CVE-2018-7159 (Node.js).
 
-#### `HasContentLengthWithLeadingZeros`
+#### Content-Length Leading Zeros
 
 **Attack:** `Content-Length: 0200` may be interpreted as decimal 200 by one parser but octal 128 by another.
 
 **RFC:** 9110 Section 8.6
 
-#### `HasInvalidTransferEncoding`
+#### Obfuscated Transfer-Encoding
 
 **Attack:** TE.TE smuggling via obfuscated Transfer-Encoding values (`xchunked`, `"chunked"`, `chunked-thing`). One system recognizes it as chunked, another does not.
 
@@ -168,102 +170,79 @@ These checks are called explicitly after successful parsing. Each returns `true`
 
 ### Host Header Attacks
 
-#### `HasInvalidHostHeaderCount`
+#### Host Header Count
 
 **Attack:** Missing Host header (routing confusion) or multiple Host headers (routing disagreement between front-end and back-end, SSRF).
 
 **RFC:** 9112 Section 3.2 — exactly one Host header required for HTTP/1.1.
 
+#### Host Header Format
+
+**Attack:** A `Host` value containing userinfo (`@`) or a path (`/`) can redirect routing or poison caches.
+
+**RFC:** 9110 Section 7.2 — Host is the host (and optional port) only.
+
 ### Path Traversal
 
-#### `HasDotSegments`
+#### Dot-Segment Traversal
 
 **Attack:** `/../` and `/./` sequences in the path allow directory traversal to access files outside the intended root.
 
 **RFC:** 3986 Section 5.2.4
 
-#### `HasBackslashInPath`
+#### Backslash Traversal
 
 **Attack:** Backslash characters (`\`) are treated as path separators on Windows, enabling traversal via `\..\`.
 
-#### `HasDoubleEncoding`
+#### Double Encoding
 
 **Attack:** `%252e%252e` decodes to `%2e%2e` after one pass, then `..` after a second. Bypasses single-decode security filters.
 
-#### `HasEncodedNullByte`
+#### Encoded Null Byte
 
 **Attack:** `%00` in the path causes C-based file systems to truncate the path at the null byte. `file.txt%00.jpg` passes extension checks but opens `file.txt`.
 
-#### `HasOverlongUtf8`
+#### Overlong UTF-8
 
 **Attack:** Overlong UTF-8 sequences encode ASCII characters (like `/` as `0xC0 0xAF`) to bypass ASCII-only path checks.
 
 **RFC:** 3629 Section 3 — overlong sequences are forbidden.
 
-### Fragment Rejection
+### Method & Target
 
-#### `HasFragmentInRequestTarget`
+#### Fragment in Request-Target
 
 **Attack:** Fragment identifiers (`#`) must not appear in HTTP request-targets. Their presence indicates injection or malformed input.
 
 **RFC:** 9112 Section 3.2
+
+#### CONNECT Method
+
+**Attack:** `CONNECT` establishes a tunnel and is meant for proxies; an origin server that honors it can be abused for SSRF.
+
+**RFC:** 9110 Section 9.3.6 — origin servers should reject CONNECT.
+
+#### Asterisk-Form Target
+
+**Attack:** The asterisk-form request-target (`*`) is only valid for `OPTIONS`; anywhere else it signals malformed or injected input.
+
+**RFC:** 9112 Section 3.2.4
 
 ---
 
 ## Usage
 
 ```csharp
-using Glyph11;
-using Glyph11.Parser.Hardened;
-using Glyph11.Validation;
+using Glyph11.Parser;
+using Glyph11.Parser.UltraHardened;
 
 var limits = ParserLimits.Default;
 
-if (HardenedParser.TryExtractFullHeader(ref buffer, request, in limits, out var bytesRead))
+// Structural + semantic validation in a single pass.
+// Throws HttpParseException on any protocol or semantic violation.
+if (UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in limits, out var bytesRead))
 {
-    // Parse-time checks already passed (method, headers, version, limits, etc.)
-    // Now run post-parse semantic checks:
-
-    if (RequestSemantics.HasInvalidHostHeaderCount(request))
-        throw new HttpParseException("Invalid Host header count.");
-
-    if (RequestSemantics.HasTransferEncodingWithContentLength(request))
-        throw new HttpParseException("Request smuggling: TE + CL.");
-
-    if (RequestSemantics.HasConflictingContentLength(request))
-        throw new HttpParseException("Conflicting Content-Length values.");
-
-    if (RequestSemantics.HasConflictingCommaSeparatedContentLength(request))
-        throw new HttpParseException("Conflicting comma-separated Content-Length.");
-
-    if (RequestSemantics.HasInvalidContentLengthFormat(request))
-        throw new HttpParseException("Invalid Content-Length format.");
-
-    if (RequestSemantics.HasContentLengthWithLeadingZeros(request))
-        throw new HttpParseException("Content-Length has leading zeros.");
-
-    if (RequestSemantics.HasInvalidTransferEncoding(request))
-        throw new HttpParseException("Invalid Transfer-Encoding value.");
-
-    if (RequestSemantics.HasDotSegments(request))
-        throw new HttpParseException("Path traversal detected.");
-
-    if (RequestSemantics.HasBackslashInPath(request))
-        throw new HttpParseException("Backslash in path.");
-
-    if (RequestSemantics.HasDoubleEncoding(request))
-        throw new HttpParseException("Double encoding detected.");
-
-    if (RequestSemantics.HasEncodedNullByte(request))
-        throw new HttpParseException("Encoded null byte in path.");
-
-    if (RequestSemantics.HasOverlongUtf8(request))
-        throw new HttpParseException("Overlong UTF-8 in path.");
-
-    if (RequestSemantics.HasFragmentInRequestTarget(request))
-        throw new HttpParseException("Fragment in request-target.");
-
-    // Safe to process request
+    // Safe to process request — fully validated.
 }
 ```
 
@@ -271,26 +250,28 @@ if (HardenedParser.TryExtractFullHeader(ref buffer, request, in limits, out var 
 
 ## Attack Categories Covered
 
-| Category | Parse-Time | Post-Parse |
-|----------|:----------:|:----------:|
-| HTTP Request Smuggling (CL.TE, TE.CL, TE.TE) | | X |
-| CRLF / Header Injection | X | |
-| Bare LF Smuggling | X | |
-| Obs-fold Smuggling | X | |
-| Header Name Injection | X | |
-| Header Value Injection | X | |
-| Content-Length Manipulation | | X |
-| Transfer-Encoding Obfuscation | | X |
-| Host Header Attacks | | X |
-| Path Traversal | | X |
-| Null Byte Injection | X | X |
-| Double Encoding Bypass | | X |
-| Overlong UTF-8 Bypass | | X |
-| Backslash Traversal | | X |
-| Fragment Injection | | X |
-| Resource Exhaustion (DoS) | X | |
-| HTTP Version Manipulation | X | |
-| Request Line Injection | X | |
+All categories below are enforced inline by `UltraHardenedParser` during parsing.
+
+| Category | Type |
+|----------|:----:|
+| HTTP Request Smuggling (CL.TE, TE.CL, TE.TE) | Semantic |
+| CRLF / Header Injection | Syntactic |
+| Bare LF Smuggling | Syntactic |
+| Obs-fold Smuggling | Syntactic |
+| Header Name Injection | Syntactic |
+| Header Value Injection | Syntactic |
+| Content-Length Manipulation | Semantic |
+| Transfer-Encoding Obfuscation | Semantic |
+| Host Header Attacks | Semantic |
+| Path Traversal | Semantic |
+| Null Byte Injection | Syntactic + Semantic |
+| Double Encoding Bypass | Semantic |
+| Overlong UTF-8 Bypass | Semantic |
+| Backslash Traversal | Semantic |
+| Fragment Injection | Semantic |
+| Resource Exhaustion (DoS) | Limits |
+| HTTP Version Manipulation | Syntactic |
+| Request Line Injection | Syntactic |
 
 ---
 

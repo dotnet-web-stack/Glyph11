@@ -10,8 +10,8 @@ using System.Buffers;
 using System.IO.Pipelines;
 using Glyph11;
 using Glyph11.Protocol;
-using Glyph11.Parser.Hardened;
-using Glyph11.Validation;
+using Glyph11.Parser;
+using Glyph11.Parser.UltraHardened;
 
 public class RequestHandler
 {
@@ -41,16 +41,12 @@ public class RequestHandler
     {
         try
         {
-            if (!HardenedParser.TryExtractFullHeader(
+            if (!UltraHardenedParser.TryExtractFullHeaderValidated(
                     ref buffer, _request, in Limits, out int bytesRead))
                 return false; // incomplete, wait for more data
 
-            // Post-parse security checks
-            if (RequestSemantics.HasTransferEncodingWithContentLength(_request))
-                throw new HttpParseException("Request smuggling attempt.");
-
-            if (RequestSemantics.HasDotSegments(_request))
-                throw new HttpParseException("Path traversal attempt.");
+            // UltraHardenedParser already enforced all structural and semantic
+            // checks (smuggling, path traversal, Host rules, ...) during parsing.
 
             buffer = buffer.Slice(bytesRead);
             return true;
@@ -94,6 +90,6 @@ Call `reader.AdvanceTo(buffer.Start, buffer.End)` after processing. The first ar
 
 `TryExtractFullHeader` returns `false` when the header is incomplete (no `\r\n\r\n` terminator found). This is not an error — the caller should continue reading more data from the pipe.
 
-### Post-parse validation
+### Validation is built in
 
-Always run `RequestSemantics` checks after parsing to catch protocol-level attacks. The parser validates syntax; semantic checks validate meaning.
+`UltraHardenedParser` enforces both syntax and semantic checks (request smuggling, path traversal, Host rules) inline during parsing — a successful parse means the request is already validated.

@@ -14,7 +14,7 @@ public sealed class BinaryRequest : IDisposable
 {
     private readonly KeyValueList _headers = new(), _query = new();
 
-    /// <summary>HTTP version string, e.g. "HTTP/1.1". Set by HardenedParser only.</summary>
+    /// <summary>HTTP version string, e.g. "HTTP/1.1". Set by UltraHardenedParser only.</summary>
     public ReadOnlyMemory<byte> Version { get; internal set; }
 
     /// <summary>HTTP method, e.g. "GET", "POST".</summary>

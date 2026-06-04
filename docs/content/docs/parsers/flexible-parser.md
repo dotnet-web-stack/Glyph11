@@ -8,7 +8,7 @@ weight: 2
 A minimal-validation HTTP/1.1 header parser optimized for maximum throughput. Performs no RFC compliance checks, no character validation, and enforces no resource limits.
 
 {{< callout type="warning" >}}
-The `FlexibleParser` does not validate input. Use it only when parsing trusted or pre-validated data. For untrusted input, use [`HardenedParser`](hardened-parser) instead.
+The `FlexibleParser` does not validate input. Use it only when parsing trusted or pre-validated data. For untrusted input, use [`UltraHardenedParser`](ultra-hardened-parser) instead.
 {{< /callout >}}
 
 ## Usage
@@ -49,15 +49,15 @@ The FlexibleParser prioritizes speed over strictness:
 
 ## Multi-Segment Handling
 
-Same as HardenedParser — when input arrives as multiple `ReadOnlySequence<byte>` segments, the entry point automatically linearizes the buffer before parsing. See [Multi-Segment Handling](../architecture/multi-segment) for details.
+Same as UltraHardenedParser — when input arrives as multiple `ReadOnlySequence<byte>` segments, the entry point automatically linearizes the buffer before parsing. See [Multi-Segment Handling](../architecture/multi-segment) for details.
 
-## Migrating to HardenedParser
+## Migrating to UltraHardenedParser
 
 ```csharp
 // Before (FlexibleParser — no limits parameter)
 FlexibleParser.TryExtractFullHeader(ref buffer, request, out bytesRead);
 
-// After (HardenedParser — add ParserLimits)
+// After (UltraHardenedParser — add ParserLimits)
 var limits = ParserLimits.Default;
-HardenedParser.TryExtractFullHeader(ref buffer, request, in limits, out bytesRead);
+UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in limits, out bytesRead);
 ```

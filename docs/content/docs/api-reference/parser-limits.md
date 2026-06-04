@@ -21,7 +21,7 @@ A `record struct` defining configurable resource limits for the parser. Use `wit
 | `MaxUrlLength` | `int` | 8192 | Maximum bytes for the request URL |
 | `MaxQueryParameterCount` | `int` | 128 | Maximum number of query parameters |
 | `MaxMethodLength` | `int` | 16 | Maximum bytes for the HTTP method |
-| `MaxTotalHeaderBytes` | `int` | 32768 | Maximum total bytes for the header section |
+| `MaxTotalHeaderBytes` | `int` | 1048576 | Maximum total bytes for the header section (1 MiB) |
 
 ## Static Properties
 

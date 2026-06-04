@@ -26,14 +26,15 @@ dotnet add package Glyph11
 ```csharp
 using System.Buffers;
 using Glyph11.Protocol;
-using Glyph11.Parser.Hardened;
+using Glyph11.Parser;
+using Glyph11.Parser.UltraHardened;
 
 ReadOnlySequence<byte> buffer = ...; // from PipeReader, Socket, etc.
 
 var request = new BinaryRequest();
 var limits = ParserLimits.Default;
 
-if (HardenedParser.TryExtractFullHeader(ref buffer, request, in limits, out int bytesRead))
+if (UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in limits, out int bytesRead))
 {
     // request.Method, request.Path, request.Headers, request.QueryParameters
     // are all populated as ReadOnlyMemory<byte> slices into the original buffer.
@@ -58,4 +59,4 @@ Since parsed fields reference the input buffer, the buffer must remain valid for
 
 - [PipeReader integration example](integration) for a complete server loop
 - [Architecture overview](../architecture) to understand the parsing paths
-- [HardenedParser](../parsers/hardened-parser) for validation rules and limits
+- [UltraHardenedParser](../parsers/ultra-hardened-parser) for validation rules and limits

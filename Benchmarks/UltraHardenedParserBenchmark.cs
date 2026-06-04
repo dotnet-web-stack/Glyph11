@@ -2,7 +2,6 @@ using System.Buffers;
 using BenchmarkDotNet.Attributes;
 using GenHTTP.Types;
 using Glyph11.Parser;
-using Glyph11.Parser.Hardened;
 using Glyph11.Parser.UltraHardened;
 
 namespace Benchmarks;

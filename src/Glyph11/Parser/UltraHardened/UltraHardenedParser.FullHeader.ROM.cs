@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using Glyph11.Parser.Hardened;
 using Glyph11.Protocol;
 
 namespace Glyph11.Parser.UltraHardened;
@@ -10,7 +9,7 @@ namespace Glyph11.Parser.UltraHardened;
 public static partial class UltraHardenedParser
 {
     // ---- Semantic validation constants (TransferEncodingName, ChunkedValue
-    //       and AsciiEqualsIgnoreCase live in HardenedParser.DetectBodyFraming.cs) ----
+    //       and AsciiEqualsIgnoreCase live in ParserConstants) ----
     private static ReadOnlySpan<byte> ContentLengthName => "content-length"u8;
     private static ReadOnlySpan<byte> HostHeaderName => "host"u8;
     private static ReadOnlySpan<byte> OptionsMethodName => "options"u8;
@@ -18,9 +17,9 @@ public static partial class UltraHardenedParser
 
     /// <summary>
     /// Combined parse + semantic validation — single-segment hot path.
-    /// Equivalent to calling <see cref="HardenedParser.TryExtractFullHeaderROM"/> followed by every
-    /// <see cref="Glyph11.Validation.RequestSemantics"/> check, but fused into one pass
-    /// over headers and one pass over the path for better cache locality and throughput.
+    /// Performs a full structural parse plus every semantic check (request smuggling,
+    /// path traversal, Host rules, ...), fused into one pass over headers and one pass
+    /// over the path for better cache locality and throughput.
     /// <para>
     /// Returns <c>false</c> if incomplete; throws <see cref="HttpParseException"/> if
     /// structurally or semantically invalid.

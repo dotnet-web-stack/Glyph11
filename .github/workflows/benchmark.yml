@@ -29,7 +29,7 @@ jobs:
         dotnet-version: 10.0
 
     - name: Run parser benchmarks
-      run: dotnet run -c Release -- --filter '*FlexibleParserBenchmark*' '*HardenedParserBenchmark*'
+      run: dotnet run -c Release -- --filter '*FlexibleParserBenchmark*' '*UltraHardenedParserBenchmark*'
       working-directory: Benchmarks
 
     - name: Upload results
@@ -109,7 +109,7 @@ jobs:
         dotnet-version: 10.0
 
     - name: Run all benchmarks
-      run: dotnet run -c Release -- --filter '*FlexibleParserBenchmark*' '*HardenedParserBenchmark*' '*AllSemanticChecksBenchmark*'
+      run: dotnet run -c Release -- --filter '*FlexibleParserBenchmark*' '*UltraHardenedParserBenchmark*'
       working-directory: Benchmarks
 
     - name: Upload results
@@ -166,7 +166,7 @@ jobs:
         comment-on-alert: true
         summary-always: true
 
-    - name: Clean stale RequestSemanticsBenchmark entries from gh-pages
+    - name: Clean stale benchmark entries from gh-pages
       if: github.ref == 'refs/heads/main'
       run: |
         git fetch origin gh-pages
@@ -181,13 +181,20 @@ jobs:
         if not raw.startswith(prefix):
             sys.exit(0)
         data = json.loads(raw[len(prefix):])
+        # Benchmark classes removed from the suite (precise prefixes so
+        # UltraHardenedParserBenchmark is never matched).
+        stale_prefixes = (
+            'Benchmarks.HardenedParserBenchmark.',
+            'Benchmarks.RequestSemanticsBenchmark.',
+            'Benchmarks.AllSemanticChecksBenchmark.',
+        )
         changed = False
         for key, entries in data.get('entries', {}).items():
             for entry in entries:
                 before = len(entry.get('benches', []))
                 entry['benches'] = [
                     b for b in entry.get('benches', [])
-                    if 'RequestSemanticsBenchmark' not in b.get('name', '')
+                    if not b.get('name', '').startswith(stale_prefixes)
                 ]
                 if len(entry['benches']) != before:
                     changed = True
@@ -195,14 +202,14 @@ jobs:
             print('No stale entries found.')
             sys.exit(0)
         p.write_text(prefix + json.dumps(data))
-        print('Cleaned stale RequestSemanticsBenchmark entries.')
+        print('Cleaned stale benchmark entries.')
         "
         cd /tmp/gh-pages
         if git diff --quiet; then
           echo "No changes to commit."
         else
           git add benchmarks/data.js
-          git commit -m "Clean stale RequestSemanticsBenchmark entries from data.js"
+          git commit -m "Clean stale benchmark entries from data.js"
           git push origin gh-pages
         fi
         cd -

@@ -1,5 +1,5 @@
 using Glyph11.Parser;
-using Glyph11.Parser.Hardened;
+using Glyph11.Parser.UltraHardened;
 using Glyph11.Protocol;
 
 namespace Tests;
@@ -14,7 +14,7 @@ public class BinaryRequestTests
 
         // Populate via parser
         ReadOnlyMemory<byte> rom = "GET /path?a=1 HTTP/1.1\r\nHost: x\r\n\r\n"u8.ToArray();
-        HardenedParser.TryExtractFullHeaderROM(ref rom, request, in limits, out _);
+        UltraHardenedParser.TryExtractFullHeaderROM(ref rom, request, in limits, out _);
 
         // Verify fields are populated
         Assert.False(request.Method.IsEmpty);

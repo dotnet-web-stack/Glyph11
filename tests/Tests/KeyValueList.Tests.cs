@@ -1,5 +1,4 @@
-using Glyph11.Parser;
-using Glyph11.Parser.Hardened;
+using Glyph11.Parser.FlexibleParser;
 using Glyph11.Protocol;
 
 namespace Tests;
@@ -19,7 +18,6 @@ public class KeyValueListTests
     {
         // Parse a request with many headers to force growth
         using var request = new BinaryRequest();
-        var limits = ParserLimits.Default;
 
         var raw = "GET / HTTP/1.1\r\n";
         for (int i = 0; i < 20; i++)
@@ -27,7 +25,7 @@ public class KeyValueListTests
         raw += "\r\n";
 
         ReadOnlyMemory<byte> rom = System.Text.Encoding.ASCII.GetBytes(raw);
-        HardenedParser.TryExtractFullHeaderROM(ref rom, request, in limits, out _);
+        FlexibleParser.TryExtractFullHeaderReadOnlyMemory(ref rom, request, out _);
 
         Assert.Equal(20, request.Headers.Count);
 
@@ -43,10 +41,9 @@ public class KeyValueListTests
     public void AsSpan_ReturnsPopulatedEntries()
     {
         using var request = new BinaryRequest();
-        var limits = ParserLimits.Default;
 
         ReadOnlyMemory<byte> rom = "GET / HTTP/1.1\r\nA: 1\r\nB: 2\r\n\r\n"u8.ToArray();
-        HardenedParser.TryExtractFullHeaderROM(ref rom, request, in limits, out _);
+        FlexibleParser.TryExtractFullHeaderReadOnlyMemory(ref rom, request, out _);
 
         var span = request.Headers.AsSpan();
         Assert.Equal(2, span.Length);
@@ -56,10 +53,9 @@ public class KeyValueListTests
     public void Dispose_CanBeCalledTwice()
     {
         var request = new BinaryRequest();
-        var limits = ParserLimits.Default;
 
         ReadOnlyMemory<byte> rom = "GET / HTTP/1.1\r\nA: 1\r\n\r\n"u8.ToArray();
-        HardenedParser.TryExtractFullHeaderROM(ref rom, request, in limits, out _);
+        FlexibleParser.TryExtractFullHeaderReadOnlyMemory(ref rom, request, out _);
 
         request.Dispose();
         var ex = Record.Exception(() => request.Dispose());

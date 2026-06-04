@@ -1,29 +1,29 @@
 ---
-title: HardenedParser
+title: UltraHardenedParser
 weight: 1
 ---
 
-**Namespace:** `Glyph11.Parser.Hardened`
+**Namespace:** `Glyph11.Parser.UltraHardened`
 
 ```csharp
-public static partial class HardenedParser
+public static partial class UltraHardenedParser
 ```
 
-A security-hardened HTTP/1.1 header parser with RFC 9110/9112 validation.
+A security-hardened HTTP/1.1 header parser with RFC 9110/9112 validation and fused semantic checks.
 
 ## Methods
 
-### TryExtractFullHeader
+### TryExtractFullHeaderValidated
 
 ```csharp
-public static bool TryExtractFullHeader(
+public static bool TryExtractFullHeaderValidated(
     ref ReadOnlySequence<byte> input,
     BinaryRequest request,
     in ParserLimits limits,
     out int bytesReadCount)
 ```
 
-Entry point that auto-dispatches based on segment layout. If the input is a single segment, delegates to `TryExtractFullHeaderROM`. If multi-segment, checks for header completeness, linearizes via `ToArray()`, then parses.
+Entry point that auto-dispatches based on segment layout. If the input is a single segment, delegates to `TryExtractFullHeaderROM`. If multi-segment, checks for header completeness, linearizes via `ToArray()`, then parses. Performs full structural and semantic validation.
 
 **Parameters:**
 
@@ -34,9 +34,9 @@ Entry point that auto-dispatches based on segment layout. If the input is a sing
 | `limits` | `in ParserLimits` | Resource limits to enforce |
 | `bytesReadCount` | `out int` | Number of bytes consumed on success |
 
-**Returns:** `true` if a complete header was parsed; `false` if the header is incomplete (waiting for more data).
+**Returns:** `true` if a complete header was parsed and validated; `false` if the header is incomplete (waiting for more data).
 
-**Throws:** `HttpParseException` for protocol violations.
+**Throws:** `HttpParseException` for protocol or semantic violations.
 
 ---
 
@@ -50,7 +50,7 @@ public static bool TryExtractFullHeaderROM(
     out int bytesReadCount)
 ```
 
-Single-segment parser operating on contiguous memory. Zero-allocation — all parsed fields are `ReadOnlyMemory<byte>` slices into the input.
+Single-segment parser operating on contiguous memory. Zero-allocation — all parsed fields are `ReadOnlyMemory<byte>` slices into the input. Performs the same structural and semantic validation as `TryExtractFullHeaderValidated`.
 
 **Parameters:**
 
@@ -63,4 +63,4 @@ Single-segment parser operating on contiguous memory. Zero-allocation — all pa
 
 **Returns:** `true` if a complete header was parsed; `false` if the header is incomplete.
 
-**Throws:** `HttpParseException` for protocol violations.
+**Throws:** `HttpParseException` for protocol or semantic violations.
