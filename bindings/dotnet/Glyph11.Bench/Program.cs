@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Engines;
@@ -117,7 +118,6 @@ internal static class CsvBench
             var data = File.ReadAllBytes(Path.Combine(dir, file));
             var rom = (ReadOnlyMemory<byte>)data;
             var seq = ThreeSegments(data);
-            var lin = new byte[data.Length]; // reused linearization buffer (no per-call allocation)
 
             // managed — ROM (single contiguous buffer)
             double mRom = Best(iters, () => { req.Clear(); var r = rom; UltraHardenedParser.TryExtractFullHeaderROM(ref r, req, in ManagedLimits, out _); });
@@ -134,11 +134,25 @@ internal static class CsvBench
             double ffi = Best(iters, () => Glyph11Parser.Parse(data, h, q, NativeLimits, out _));
             Console.WriteLine($"dotnet-ffi,{name},{ffi:F1}");
 
-            // native binding (FFI) — multi-segment: same reused-buffer linearization, then parse
-            double ffiSeg = Best(iters, () => { seq.CopyTo(lin); Glyph11Parser.Parse(lin, h, q, NativeLimits, out _); });
+            // native binding (FFI) — multi-segment: a real binding linearizes into a fresh NATIVE
+            // buffer per request (NativeMemory, no GC), parses, frees — the C core takes one slab
+            // and the caller owns the memory, so no GC pressure unlike the managed ToArray.
+            double ffiSeg = Best(iters, () => FfiMultiSeg(seq, data.Length, h, q, in NativeLimits));
             Console.WriteLine($"dotnet-ffi-multiseg,{name},{ffiSeg:F1}");
         }
         req.Dispose();
+    }
+
+    private static unsafe void FfiMultiSeg(ReadOnlySequence<byte> seq, int len, Glyph11Field[] h, Glyph11Field[] q, in Glyph11Limits lim)
+    {
+        byte* p = (byte*)NativeMemory.Alloc((nuint)len);
+        try
+        {
+            var span = new Span<byte>(p, len);
+            seq.CopyTo(span);
+            Glyph11Parser.Parse(span, h, q, lim, out _);
+        }
+        finally { NativeMemory.Free(p); }
     }
 
     // best of N timed trials (after warmup) — filters scheduling / turbo interference

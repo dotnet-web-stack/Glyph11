@@ -33,23 +33,28 @@ benchmarks page.
 
 | Payload | C# Ultra | Pure C  | C# (FFI) | Kotlin (FFI) |
 |---------|---------:|--------:|---------:|-------------:|
-| ~95 B   | 117 ns   | 96 ns   | 96 ns    | 101 ns |
-| 4 KB    | 723 ns   | 519 ns  | 549 ns   | 556 ns |
-| 32 KB   | 5123 ns  | 3808 ns | 4166 ns  | 4188 ns |
+| ~95 B   | 121 ns   | 94 ns   | 97 ns    | 103 ns |
+| 4 KB    | 756 ns   | 556 ns  | 565 ns   | 586 ns |
+| 32 KB   | 5363 ns  | 4154 ns | 4188 ns  | 4172 ns |
 
-**Multi-segment** (3 segments → linearize into a contiguous buffer, then parse):
+**Multi-segment** (3 segments → allocate a buffer per request, linearize, parse):
 
 | Payload | C# Ultra | Pure C  | C# (FFI) | Kotlin (FFI) |
 |---------|---------:|--------:|---------:|-------------:|
-| ~95 B   | 255 ns   | 101 ns  | 107 ns   | 110 ns |
-| 4 KB    | 1345 ns  | 551 ns  | 599 ns   | 584 ns |
-| 32 KB   | 9028 ns  | 4217 ns | 4583 ns  | 4660 ns |
+| ~95 B   | 265 ns   | 104 ns  | 121 ns   | 173 ns |
+| 4 KB    | 1376 ns  | 574 ns  | 629 ns   | 743 ns |
+| 32 KB   | 9369 ns  | 4624 ns | 4649 ns  | 5441 ns |
 
-Single-segment parses the contiguous data in place — no buffer needed. Multi-segment
-must first linearize. The native bindings reuse one scratch buffer (allocated once per
-connection), so multi-segment costs only a `memcpy` over single-segment (~1.1×). The
-managed `TryExtractFullHeaderValidated` allocates a fresh array (`input.ToArray()`)
-**every request**, so its multi-segment pays a per-request GC allocation (~1.8–2.2×).
-**That allocation, not the copy, is the multi-segment cost** — the copy itself is only
-~425 ns at 32 KB (measured: parse 4114 + copy 425 ≈ copy-and-parse 4497). Numbers vary
-run-to-run.
+Single-segment parses the contiguous data in place. Multi-segment must first linearize
+into a contiguous buffer — and **every** parser allocates that buffer per request here,
+so the cost reflects each runtime's allocator:
+
+- **managed** — `TryExtractFullHeaderValidated` allocates a GC array (`ToArray`) →
+  **~1.8–2.2×** single-segment. GC pressure, not the copy (the copy is only ~425 ns).
+- **pure C / C# FFI** — `malloc` / `NativeMemory` → **~1.1×**. Native allocation is cheap.
+- **Kotlin** — a per-request FFM `Arena` → **~1.3×**. The arena costs more than raw `malloc`.
+
+So the multi-segment cost is the **allocation**, and the C core's advantage is native
+memory: a GC'd 32 KB array every request is what makes the managed path ~2×. (A hot path
+would reuse one scratch buffer instead — then every parser drops to ~1.0–1.1×.) Numbers
+vary run-to-run.
