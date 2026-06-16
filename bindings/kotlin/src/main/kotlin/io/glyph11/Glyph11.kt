@@ -133,10 +133,9 @@ object Glyph11 {
     }
 
     /**
-     * Benchmark helper: parse [input] [iters] times reusing off-heap buffers
-     * (no per-call allocation), returning ns/op. Isolates parse + FFM-call cost
-     * for a fair cross-language comparison; the public [parse] allocates an
-     * Arena per call for convenience.
+     * Benchmark helper: parse [input] [iters] times, returning ns/op. Contiguous
+     * ([multiSeg] = false) reuses one native buffer; multi-segment allocates a fresh
+     * native buffer (a per-call [Arena]) each request, mirroring real linearization.
      */
     fun benchParse(input: ByteArray, iters: Long, multiSeg: Boolean = false): Double {
         Arena.ofConfined().use { arena ->
@@ -163,17 +162,26 @@ object Glyph11 {
             lim.set(ValueLayout.JAVA_INT, 24L, 16)         // max_method_length
             lim.set(ValueLayout.JAVA_INT, 28L, 64 * 1024)  // max_total_header_bytes
 
-            fun once() {
-                if (multiSeg) { // linearize 3 segments into the reused native buffer each call
-                    MemorySegment.copy(input, 0, buf, ValueLayout.JAVA_BYTE, 0L, s1)
-                    MemorySegment.copy(input, s1, buf, ValueLayout.JAVA_BYTE, s1.toLong(), s2 - s1)
-                    MemorySegment.copy(input, s2, buf, ValueLayout.JAVA_BYTE, s2.toLong(), input.size - s2)
-                }
+            fun parseInto(b: MemorySegment) {
                 req.set(ValueLayout.ADDRESS, OFF_HEADERS, headers)
                 req.set(ValueLayout.JAVA_INT, OFF_HEADER_CAP, CAPACITY)
                 req.set(ValueLayout.ADDRESS, OFF_QUERY, query)
                 req.set(ValueLayout.JAVA_INT, OFF_QUERY_CAP, CAPACITY)
-                parseHandle.invoke(buf, len, lim, req, consumed)
+                parseHandle.invoke(b, len, lim, req, consumed)
+            }
+            fun once() {
+                if (multiSeg) {
+                    // a real binding linearizes a fresh native buffer per request (no reuse)
+                    Arena.ofConfined().use { tmp ->
+                        val b = tmp.allocate(len)
+                        MemorySegment.copy(input, 0, b, ValueLayout.JAVA_BYTE, 0L, s1)
+                        MemorySegment.copy(input, s1, b, ValueLayout.JAVA_BYTE, s1.toLong(), s2 - s1)
+                        MemorySegment.copy(input, s2, b, ValueLayout.JAVA_BYTE, s2.toLong(), input.size - s2)
+                        parseInto(b)
+                    }
+                } else {
+                    parseInto(buf)
+                }
             }
 
             var w = 0L

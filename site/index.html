@@ -49,13 +49,13 @@
     The same hardened parser, measured the same way (warmup + best of timed trials) on identical
     payloads, in <b>contiguous</b> and <b>multi-segment</b> modes. <b>C# Ultra</b> is the standalone
     managed parser; <b>Pure C</b> is the native core; the bindings reach that core from .NET and the
-    JVM. The bindings call the same C, so the native columns are within measurement noise of each
-    other — the meaningful gap is native vs. managed. Multi-segment must be linearized into a
-    contiguous buffer first; that per-request copy is counted in every multi-seg number, using a
-    reused scratch buffer for <em>every</em> parser so the column compares the parser, not the copy.
-    (The managed one-shot API <code>TryExtractFullHeaderValidated</code> instead allocates that
-    buffer via <code>ToArray</code> each request — an API cost you avoid by hand-rolling
-    <code>CopyTo</code>&nbsp;+&nbsp;ROM.)
+    JVM. Single-segment parses the contiguous data in place. Multi-segment must first linearize the
+    segments into a contiguous buffer — and <em>every</em> parser allocates that buffer per request
+    here, so the cost reflects each runtime's allocator: managed
+    <code>TryExtractFullHeaderValidated</code> allocates a GC array (<code>ToArray</code>) → ≈ 2×;
+    the native bindings allocate native memory (<code>malloc</code> / <code>NativeMemory</code> /
+    <code>Arena</code>) → ≈ 1.1–1.3×. The multi-segment cost is the <b>allocation</b>, and the C
+    core's win is native memory — GC pressure is what makes the managed path ~2×.
     <br><a href="https://github.com/dotnet-web-stack/Glyph11">github.com/dotnet-web-stack/Glyph11</a>
   </footer>
 
