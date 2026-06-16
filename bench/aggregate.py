@@ -15,6 +15,10 @@ LANGS = [
     ("dotnet-ffi-multiseg", "C# binding (multi-seg)"),
     ("kotlin-ffi", "Kotlin binding (FFI)"),
     ("kotlin-ffi-multiseg", "Kotlin binding (multi-seg)"),
+    ("dotnet-managed-chunked", "C# managed (chunked)"),
+    ("pure-c-chunked", "Pure C (chunked)"),
+    ("dotnet-ffi-chunked", "C# binding (chunked)"),
+    ("kotlin-ffi-chunked", "Kotlin binding (chunked)"),
 ]
 PAYLOADS = [("small", "~95 B"), ("4k", "4 KB"), ("32k", "32 KB")]
 

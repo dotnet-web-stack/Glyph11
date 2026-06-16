@@ -6,7 +6,37 @@
         <Nullable>enable</Nullable>
         <LangVersion>latest</LangVersion>
         <RootNamespace>Glyph11.Native</RootNamespace>
-        <Description>P/Invoke binding for the Glyph11 C core (libglyph11).</Description>
+
+        <!-- NuGet package: the P/Invoke binding plus the native libglyph11 core,
+             bundled per-RID under runtimes/. Versioned independently from the pure
+             managed Glyph11 package (this wraps the C core; ABI tracked in glyph11.h). -->
+        <PackageId>Glyph11.Native</PackageId>
+        <Version>0.1.0</Version>
+        <AssemblyVersion>0.1.0.0</AssemblyVersion>
+        <FileVersion>0.1.0.0</FileVersion>
+        <Description>Native (P/Invoke) binding for the Glyph11 hardened HTTP/1.1 parser — the C core (libglyph11) reachable from .NET, with native binaries bundled for linux-x64/arm64, win-x64/arm64 and osx-x64/arm64.</Description>
+        <PackageTags>C HTTP Protocol Parser P/Invoke Native FFI Interop</PackageTags>
+
+        <PackageProjectUrl>https://github.com/MDA2AV/Glyph11</PackageProjectUrl>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <RepositoryType>git</RepositoryType>
+        <RepositoryUrl>https://github.com/MDA2AV/Glyph11</RepositoryUrl>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <Deterministic>true</Deterministic>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
     </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="/" />
+        <!-- Native libglyph11 binaries, one per RID, staged here by the package-native
+             CI matrix before `dotnet pack`. Pack-only (None, no CopyToOutputDirectory):
+             a normal consumer build never copies all six platforms' binaries — the SDK
+             resolves the single RID-matching asset from runtimes/ at build/publish. -->
+        <None Include="runtimes/**" Pack="true" PackagePath="runtimes/%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
 
 </Project>

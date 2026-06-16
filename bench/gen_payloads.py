@@ -18,6 +18,17 @@ def build_header(target: int) -> bytes:
     return s.encode("ascii")
 
 
+def build_chunked(decoded_size: int, chunk_size: int = 512) -> bytes:
+    """A chunked transfer-encoding body whose decoded length is `decoded_size`."""
+    body = bytes(i % 251 for i in range(decoded_size))
+    out = bytearray()
+    for i in range(0, decoded_size, chunk_size):
+        c = body[i:i + chunk_size]
+        out += f"{len(c):x}".encode() + b"\r\n" + c + b"\r\n"
+    out += b"0\r\n\r\n"
+    return bytes(out)
+
+
 SMALL = (
     "GET /route?p1=1&p2=2&p3=3&p4=4 HTTP/1.1\r\n"
     "Host: localhost\r\nContent-Length: 100\r\nServer: Glyph11\r\n\r\n"
@@ -27,7 +38,12 @@ SMALL = (
 def main() -> None:
     out = sys.argv[1] if len(sys.argv) > 1 else "."
     os.makedirs(out, exist_ok=True)
-    payloads = {"small.bin": SMALL, "h4k.bin": build_header(4096), "h32k.bin": build_header(32768)}
+    payloads = {
+        "small.bin": SMALL, "h4k.bin": build_header(4096), "h32k.bin": build_header(32768),
+        "chunked_small.bin": build_chunked(256),
+        "chunked_4k.bin": build_chunked(4096),
+        "chunked_32k.bin": build_chunked(32768),
+    }
     for name, data in payloads.items():
         with open(os.path.join(out, name), "wb") as f:
             f.write(data)

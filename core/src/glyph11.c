@@ -528,3 +528,156 @@ glyph11_status glyph11_parse_request(
     if (consumed) *consumed = total;
     return GLYPH11_OK;
 }
+
+/* ===================== Chunked transfer-encoding decoder ================= */
+
+enum {
+    CH_SIZE = 0,        /* reading hex chunk size */
+    CH_EXT,             /* reading chunk extension (after ';') */
+    CH_SIZE_LF,         /* size/ext CR seen, expect LF */
+    CH_DATA,            /* copying chunk payload */
+    CH_DATA_CR,         /* payload done, expect CR */
+    CH_DATA_LF,         /* payload CR seen, expect LF */
+    CH_TRAILER,         /* start of a trailer line (or the final empty line) */
+    CH_TRAILER_END_LF,  /* empty-line CR seen, expect LF -> done */
+    CH_TRAILER_LINE,    /* scanning a trailer line */
+    CH_TRAILER_LINE_LF, /* trailer-line CR seen, expect LF */
+    CH_DONE             /* body complete */
+};
+
+#define GLYPH11_MAX_CHUNK_EXT 4096
+
+void glyph11_chunk_decoder_init(glyph11_chunk_decoder* dec)
+{
+    dec->phase = CH_SIZE;
+    dec->digit_count = 0;
+    dec->ext_bytes = 0;
+    dec->reserved = 0;
+    dec->chunk_size = 0;
+    dec->remaining = 0;
+}
+
+static int ch_hexval(uint8_t b)
+{
+    if (b >= '0' && b <= '9') return b - '0';
+    if (b >= 'a' && b <= 'f') return b - 'a' + 10;
+    if (b >= 'A' && b <= 'F') return b - 'A' + 10;
+    return -1;
+}
+
+glyph11_chunk_result glyph11_chunk_decode(
+    glyph11_chunk_decoder* dec,
+    const uint8_t* in, size_t in_len,
+    uint8_t* out, size_t out_cap,
+    size_t* in_consumed, size_t* out_written)
+{
+    size_t ip = 0, op = 0;
+    glyph11_chunk_result result = GLYPH11_CHUNK_OK;
+
+    if (dec->phase == CH_DONE) {
+        if (in_consumed) *in_consumed = 0;
+        if (out_written) *out_written = 0;
+        return GLYPH11_CHUNK_DONE;
+    }
+
+    while (ip < in_len) {
+        uint8_t b = in[ip];
+        switch (dec->phase) {
+            case CH_SIZE: {
+                int hv = ch_hexval(b);
+                if (dec->digit_count == 0 && (b == ' ' || b == '\t')) { result = GLYPH11_CHUNK_ERROR; goto done; }
+                if (dec->digit_count == 0 && b == '-')                 { result = GLYPH11_CHUNK_ERROR; goto done; }
+                if (dec->digit_count == 1 && dec->chunk_size == 0 && (b == 'x' || b == 'X')) { result = GLYPH11_CHUNK_ERROR; goto done; }
+                if (hv >= 0) {
+                    if (dec->digit_count >= 16) { result = GLYPH11_CHUNK_ERROR; goto done; }  /* overflow */
+                    dec->chunk_size = (dec->chunk_size << 4) | (uint64_t)hv;
+                    dec->digit_count++;
+                    ip++;
+                    break;
+                }
+                if (dec->digit_count == 0) { result = GLYPH11_CHUNK_ERROR; goto done; }  /* no digits */
+                if (b == '_')  { result = GLYPH11_CHUNK_ERROR; goto done; }
+                if (b == ';')  { dec->ext_bytes = 0; dec->phase = CH_EXT; ip++; break; }
+                if (b == '\n') { result = GLYPH11_CHUNK_ERROR; goto done; }  /* bare LF */
+                if (b == '\r') { dec->phase = CH_SIZE_LF; ip++; break; }
+                result = GLYPH11_CHUNK_ERROR; goto done;                    /* missing CRLF */
+            }
+
+            case CH_EXT: {
+                if (dec->ext_bytes > GLYPH11_MAX_CHUNK_EXT) { result = GLYPH11_CHUNK_ERROR; goto done; }
+                if (b == 0)    { result = GLYPH11_CHUNK_ERROR; goto done; }  /* NUL */
+                if (b == '\n') { result = GLYPH11_CHUNK_ERROR; goto done; }  /* bare LF */
+                if (b == '\r') {
+                    if (dec->ext_bytes == 0) { result = GLYPH11_CHUNK_ERROR; goto done; }  /* bare ';' */
+                    dec->phase = CH_SIZE_LF; ip++; break;
+                }
+                dec->ext_bytes++; ip++; break;
+            }
+
+            case CH_SIZE_LF: {
+                if (b != '\n') { result = GLYPH11_CHUNK_ERROR; goto done; }
+                ip++;
+                if (dec->chunk_size == 0) dec->phase = CH_TRAILER;
+                else { dec->remaining = dec->chunk_size; dec->phase = CH_DATA; }
+                break;
+            }
+
+            case CH_DATA: {
+                size_t avail = in_len - ip;
+                size_t want  = dec->remaining < avail ? (size_t)dec->remaining : avail;
+                size_t room  = out_cap - op;
+                size_t n     = want < room ? want : room;
+                if (n) { memcpy(out + op, in + ip, n); ip += n; op += n; dec->remaining -= n; }
+                if (dec->remaining == 0) { dec->phase = CH_DATA_CR; break; }
+                goto done;  /* input exhausted or output full; result stays OK */
+            }
+
+            case CH_DATA_CR: {
+                if (b == '\n') { result = GLYPH11_CHUNK_ERROR; goto done; }  /* bare LF after data */
+                if (b != '\r') { result = GLYPH11_CHUNK_ERROR; goto done; }  /* missing CRLF */
+                dec->phase = CH_DATA_LF; ip++; break;
+            }
+
+            case CH_DATA_LF: {
+                if (b != '\n') { result = GLYPH11_CHUNK_ERROR; goto done; }
+                ip++;
+                dec->phase = CH_SIZE;
+                dec->chunk_size = 0; dec->digit_count = 0; dec->ext_bytes = 0;
+                break;
+            }
+
+            case CH_TRAILER: {
+                if (b == '\r') { dec->phase = CH_TRAILER_END_LF; ip++; break; }
+                if (b == '\n') { result = GLYPH11_CHUNK_ERROR; goto done; }  /* bare LF */
+                dec->phase = CH_TRAILER_LINE; ip++; break;                   /* first content byte */
+            }
+
+            case CH_TRAILER_END_LF: {
+                if (b != '\n') { result = GLYPH11_CHUNK_ERROR; goto done; }
+                ip++;
+                dec->phase = CH_DONE;
+                result = GLYPH11_CHUNK_DONE;
+                goto done;
+            }
+
+            case CH_TRAILER_LINE: {
+                if (b == '\r') { dec->phase = CH_TRAILER_LINE_LF; ip++; break; }
+                if (b == '\n') { result = GLYPH11_CHUNK_ERROR; goto done; }  /* bare LF */
+                ip++; break;                                                /* trailer content */
+            }
+
+            case CH_TRAILER_LINE_LF: {
+                if (b != '\n') { result = GLYPH11_CHUNK_ERROR; goto done; }
+                ip++; dec->phase = CH_TRAILER; break;
+            }
+
+            default:
+                result = GLYPH11_CHUNK_ERROR; goto done;
+        }
+    }
+
+done:
+    if (in_consumed) *in_consumed = ip;
+    if (out_written) *out_written = op;
+    return result;
+}

@@ -36,7 +36,7 @@
   </p>
 
   <h2>Benchmarks</h2>
-  <p class="meta"><code>UltraHardenedParser</code> · ns/op, lower is better · <span id="meta">loading…</span></p>
+  <p class="meta">Header parsing &amp; chunked-body decoding · ns/op, lower is better · <span id="meta">loading…</span></p>
 
   <h3>Contiguous</h3>
   <p class="sub">Request already in one buffer — parsed in place, no linearization.</p>
@@ -47,6 +47,11 @@
   <p class="sub">Fragmented request — linearized into a buffer (allocated per request), then parsed.</p>
   <div class="card"><div id="table-multi"><p>Loading…</p></div></div>
   <div class="card"><canvas id="chart-multi" height="130"></canvas></div>
+
+  <h3>Chunked body</h3>
+  <p class="sub">Decode a chunked transfer-encoding body — strip the framing, copy the payload out.</p>
+  <div class="card"><div id="table-chunked"><p>Loading…</p></div></div>
+  <div class="card"><canvas id="chart-chunked" height="130"></canvas></div>
 
   <footer>
     The same hardened parser, measured the same way (warmup + best of timed trials) on identical
@@ -65,10 +70,10 @@
   <script>
     // One row per parser, with the data.json keys for each mode and a stable color.
     const PARSERS = [
-      { name: 'C# managed', contig: 'dotnet-managed-rom',  multi: 'dotnet-managed-multiseg', color: '#2563eb' },
-      { name: 'Pure C',     contig: 'pure-c',              multi: 'pure-c-multiseg',         color: '#16a34a' },
-      { name: 'C# FFI',     contig: 'dotnet-ffi',          multi: 'dotnet-ffi-multiseg',     color: '#ea580c' },
-      { name: 'Kotlin FFI', contig: 'kotlin-ffi',          multi: 'kotlin-ffi-multiseg',     color: '#7c3aed' },
+      { name: 'C# managed', contig: 'dotnet-managed-rom',  multi: 'dotnet-managed-multiseg', chunked: 'dotnet-managed-chunked', color: '#2563eb' },
+      { name: 'Pure C',     contig: 'pure-c',              multi: 'pure-c-multiseg',         chunked: 'pure-c-chunked',         color: '#16a34a' },
+      { name: 'C# FFI',     contig: 'dotnet-ffi',          multi: 'dotnet-ffi-multiseg',     chunked: 'dotnet-ffi-chunked',     color: '#ea580c' },
+      { name: 'Kotlin FFI', contig: 'kotlin-ffi',          multi: 'kotlin-ffi-multiseg',     chunked: 'kotlin-ffi-chunked',     color: '#7c3aed' },
     ];
 
     function renderTable(elId, rows, mode) {
@@ -114,11 +119,13 @@
         document.getElementById('meta').textContent = d.generated ? ('as of ' + d.generated) : '';
         renderTable('table-contig', d.rows, 'contig');
         renderTable('table-multi', d.rows, 'multi');
+        renderTable('table-chunked', d.rows, 'chunked');
         renderChart('chart-contig', d.rows, 'contig');
         renderChart('chart-multi', d.rows, 'multi');
+        renderChart('chart-chunked', d.rows, 'chunked');
       })
       .catch(() => {
-        for (const id of ['table-contig', 'table-multi']) {
+        for (const id of ['table-contig', 'table-multi', 'table-chunked']) {
           document.getElementById(id).innerHTML =
             '<p><em>No benchmark data yet — run the Cross-Language Benchmark workflow.</em></p>';
         }

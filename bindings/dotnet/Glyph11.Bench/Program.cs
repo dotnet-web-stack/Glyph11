@@ -140,7 +140,44 @@ internal static class CsvBench
             double ffiSeg = Best(iters, () => FfiMultiSeg(seq, data.Length, h, q, in NativeLimits));
             Console.WriteLine($"dotnet-ffi-multiseg,{name},{ffiSeg:F1}");
         }
+
+        // ---- chunked body: decode the whole body into a reused output buffer ----
+        (string name, string file, long iters)[] chunked =
+        {
+            ("small", "chunked_small.bin", 1_000_000),
+            ("4k", "chunked_4k.bin", 300_000),
+            ("32k", "chunked_32k.bin", 50_000),
+        };
+        var chOut = new byte[64 * 1024];
+        foreach (var (cname, cfile, citers) in chunked)
+        {
+            var body = File.ReadAllBytes(Path.Combine(dir, cfile));
+            Console.WriteLine($"dotnet-managed-chunked,{cname},{Best(citers, () => DecodeManagedChunked(body, chOut)):F1}");
+            Console.WriteLine($"dotnet-ffi-chunked,{cname},{Best(citers, () => DecodeFfiChunked(body, chOut)):F1}");
+        }
         req.Dispose();
+    }
+
+    /// <summary>Managed: loop the span-based parser, copying each chunk payload into <paramref name="output"/>.</summary>
+    private static void DecodeManagedChunked(byte[] body, byte[] output)
+    {
+        var stream = new ChunkedBodyStream();
+        int inOff = 0, outOff = 0;
+        while (true)
+        {
+            var r = stream.TryReadChunk(body.AsSpan(inOff), out int consumed, out int dataOff, out int dataLen);
+            if (r != ChunkResult.Chunk) break;
+            body.AsSpan(inOff + dataOff, dataLen).CopyTo(output.AsSpan(outOff));
+            outOff += dataLen;
+            inOff += consumed;
+        }
+    }
+
+    /// <summary>FFI: one streaming decode straight into <paramref name="output"/>.</summary>
+    private static void DecodeFfiChunked(byte[] body, byte[] output)
+    {
+        Glyph11Chunked.Init(out var dec);
+        Glyph11Chunked.Decode(ref dec, body, output, out _, out _);
     }
 
     private static unsafe void FfiMultiSeg(ReadOnlySequence<byte> seq, int len, Glyph11Field[] h, Glyph11Field[] q, in Glyph11Limits lim)

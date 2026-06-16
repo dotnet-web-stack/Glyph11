@@ -28,7 +28,7 @@ extern "C" {
 /* ---- Versioning -------------------------------------------------------- */
 
 #define GLYPH11_VERSION_MAJOR 0
-#define GLYPH11_VERSION_MINOR 1
+#define GLYPH11_VERSION_MINOR 2
 #define GLYPH11_VERSION_PATCH 0
 
 /* Packed ABI version: (major << 16) | (minor << 8) | patch.
@@ -157,6 +157,50 @@ glyph11_status glyph11_parse_request(
     const uint8_t* buf, size_t len,
     const glyph11_limits* limits,
     glyph11_request* req, size_t* consumed);
+
+/* ---- Chunked transfer-encoding decoder (RFC 9112 §7.1) ----------------- */
+
+/* Result of glyph11_chunk_decode. */
+typedef enum {
+    GLYPH11_CHUNK_OK    = 0,  /* progress made — drain `out`, supply more input, call again */
+    GLYPH11_CHUNK_DONE  = 1,  /* terminal chunk and trailers consumed; the body is complete */
+    GLYPH11_CHUNK_ERROR = 2,  /* malformed chunked encoding — the server should respond 400 */
+} glyph11_chunk_result;
+
+/* Streaming decoder state. Zero-initialize (or call glyph11_chunk_decoder_init)
+ * before the first call, then reuse the same instance across calls for one body. */
+typedef struct {
+    uint32_t phase;
+    uint32_t digit_count;
+    uint32_t ext_bytes;
+    uint32_t reserved;
+    uint64_t chunk_size;
+    uint64_t remaining;
+} glyph11_chunk_decoder;
+
+/* Reset a decoder to the start state. */
+void glyph11_chunk_decoder_init(glyph11_chunk_decoder* dec);
+
+/*
+ * Decode chunked transfer-encoding incrementally: strip the framing and write the
+ * decoded body bytes into `out`. Call repeatedly as data arrives — a chunk's
+ * payload may be split across calls (no re-parsing; only the payload is copied).
+ *
+ *   dec          : decoder state, reused across calls for one body.
+ *   in, in_len   : the next bytes of the chunked stream.
+ *   out, out_cap : caller buffer to receive decoded body bytes.
+ *   in_consumed  : out — bytes consumed from `in` (advance your reader by this).
+ *   out_written  : out — decoded body bytes written to `out`.
+ *
+ * Returns GLYPH11_CHUNK_DONE when the body is complete, GLYPH11_CHUNK_ERROR on a
+ * malformed encoding, otherwise GLYPH11_CHUNK_OK — meaning the call stopped because
+ * `in` was exhausted or `out` filled; drain/refill and call again. No allocation.
+ */
+glyph11_chunk_result glyph11_chunk_decode(
+    glyph11_chunk_decoder* dec,
+    const uint8_t* in, size_t in_len,
+    uint8_t* out, size_t out_cap,
+    size_t* in_consumed, size_t* out_written);
 
 #ifdef __cplusplus
 } /* extern "C" */

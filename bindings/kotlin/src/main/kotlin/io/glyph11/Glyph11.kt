@@ -83,6 +83,20 @@ object Glyph11 {
         FunctionDescriptor.of(ValueLayout.JAVA_INT),
     )
 
+    private val chunkDecodeHandle = handle(
+        "glyph11_chunk_decode",
+        FunctionDescriptor.of(
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS,    // glyph11_chunk_decoder* dec
+            ValueLayout.ADDRESS,    // const uint8_t* in
+            ValueLayout.JAVA_LONG,  // size_t in_len
+            ValueLayout.ADDRESS,    // uint8_t* out
+            ValueLayout.JAVA_LONG,  // size_t out_cap
+            ValueLayout.ADDRESS,    // size_t* in_consumed
+            ValueLayout.ADDRESS,    // size_t* out_written
+        ),
+    )
+
     /** Packed ABI version of the loaded native library. */
     val abiVersion: Int get() = abiHandle.invoke() as Int
 
@@ -187,6 +201,38 @@ object Glyph11 {
             var w = 0L
             while (w < iters / 10 + 1) { once(); w++ } // warmup (also lets the JIT compile)
             var best = Double.MAX_VALUE // best of N trials filters scheduling / turbo interference
+            for (trial in 0 until 5) {
+                val t0 = System.nanoTime()
+                var i = 0L
+                while (i < iters) { once(); i++ }
+                val t1 = System.nanoTime()
+                val ns = (t1 - t0).toDouble() / iters
+                if (ns < best) best = ns
+            }
+            return best
+        }
+    }
+
+    /** Benchmark helper: decode the chunked body [input] [iters] times, returning ns/op. */
+    fun benchChunked(input: ByteArray, iters: Long): Double {
+        Arena.ofConfined().use { arena ->
+            val inBuf = arena.allocate(maxOf(input.size, 1).toLong())
+            MemorySegment.copy(input, 0, inBuf, ValueLayout.JAVA_BYTE, 0L, input.size)
+            val outBuf = arena.allocate(64L * 1024)
+            val dec = arena.allocate(32)
+            val ic = arena.allocate(ValueLayout.JAVA_LONG)
+            val ow = arena.allocate(ValueLayout.JAVA_LONG)
+            val len = input.size.toLong()
+            val outCap = 64L * 1024
+
+            fun once() {
+                dec.fill(0.toByte()) // reset decoder (zero == start state)
+                chunkDecodeHandle.invoke(dec, inBuf, len, outBuf, outCap, ic, ow)
+            }
+
+            var w = 0L
+            while (w < iters / 10 + 1) { once(); w++ } // warmup
+            var best = Double.MAX_VALUE
             for (trial in 0 until 5) {
                 val t0 = System.nanoTime()
                 var i = 0L
