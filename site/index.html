@@ -10,17 +10,18 @@
   body { font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
          max-width: 940px; margin: 2.2rem auto; padding: 0 1.1rem; }
   h1 { font-size: 1.9rem; margin: 0 0 .2rem; }
-  h2 { font-size: 1.15rem; margin: 1.8rem 0 .6rem; }
+  h2 { font-size: 1.15rem; margin: 1.8rem 0 .4rem; }
+  h3 { font-size: 1.02rem; margin: 1.6rem 0 .2rem; color: #374151; }
   .tagline { color: var(--muted); margin: 0 0 1.4rem; font-size: 1.02rem; }
-  .meta { color: var(--muted); margin: 0 0 1rem; font-size: .9rem; }
-  .card { border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem 1.2rem; margin: 1rem 0; }
+  .meta { color: var(--muted); margin: 0 0 .4rem; font-size: .9rem; }
+  .sub { color: var(--muted); margin: 0 0 .6rem; font-size: .85rem; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem 1.2rem; margin: .7rem 0; }
   table { border-collapse: collapse; width: 100%; }
   th, td { padding: .5rem .65rem; border-bottom: 1px solid var(--line); text-align: right;
            font-variant-numeric: tabular-nums; white-space: nowrap; }
   th:first-child, td:first-child { text-align: left; }
   thead th { border-bottom: 2px solid #9ca3af; font-weight: 600; }
   td.best { font-weight: 700; color: #16a34a; }
-  #table { overflow-x: auto; }
   footer { color: var(--muted); font-size: .85rem; margin-top: 2rem; line-height: 1.5; }
   a { color: #2563eb; text-decoration: none; }
   a:hover { text-decoration: underline; }
@@ -37,23 +38,24 @@
   <h2>Benchmarks</h2>
   <p class="meta"><code>UltraHardenedParser</code> · ns/op, lower is better · <span id="meta">loading…</span></p>
 
-  <div class="card">
-    <div id="table"><p>Loading…</p></div>
-  </div>
+  <h3>Contiguous</h3>
+  <p class="sub">Request already in one buffer — parsed in place, no linearization.</p>
+  <div class="card"><div id="table-contig"><p>Loading…</p></div></div>
+  <div class="card"><canvas id="chart-contig" height="130"></canvas></div>
 
-  <div class="card">
-    <canvas id="chart" height="160"></canvas>
-  </div>
+  <h3>Multi-segment</h3>
+  <p class="sub">Fragmented request — linearized into a buffer (allocated per request), then parsed.</p>
+  <div class="card"><div id="table-multi"><p>Loading…</p></div></div>
+  <div class="card"><canvas id="chart-multi" height="130"></canvas></div>
 
   <footer>
     The same hardened parser, measured the same way (warmup + best of timed trials) on identical
-    payloads, in <b>contiguous</b> and <b>multi-segment</b> modes. <b>C# Ultra</b> is the standalone
-    managed parser; <b>Pure C</b> is the native core; the bindings reach that core from .NET and the
-    JVM. Single-segment parses the contiguous data in place. Multi-segment must first linearize the
-    segments into a contiguous buffer — and <em>every</em> parser allocates that buffer per request
-    here, so the cost reflects each runtime's allocator: managed
-    <code>TryExtractFullHeaderValidated</code> allocates a GC array (<code>ToArray</code>) → ≈ 2×;
-    the native bindings allocate native memory (<code>malloc</code> / <code>NativeMemory</code> /
+    payloads. <b>C# managed</b> is the standalone parser; <b>Pure C</b> is the native core; the
+    bindings reach that core from .NET and the JVM. Single-segment parses the contiguous data in
+    place. Multi-segment must first linearize the segments into a contiguous buffer — and <em>every</em>
+    parser allocates that buffer per request here, so the cost reflects each runtime's allocator:
+    managed <code>TryExtractFullHeaderValidated</code> allocates a GC array (<code>ToArray</code>) →
+    ≈ 2×; the native bindings allocate native memory (<code>malloc</code> / <code>NativeMemory</code> /
     <code>Arena</code>) → ≈ 1.1–1.3×. The multi-segment cost is the <b>allocation</b>, and the C
     core's win is native memory — GC pressure is what makes the managed path ~2×.
     <br><a href="https://github.com/dotnet-web-stack/Glyph11">github.com/dotnet-web-stack/Glyph11</a>
@@ -61,54 +63,65 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
   <script>
-    // paired hues: contiguous = dark, multi-seg = light (managed, pure C, C# FFI, Kotlin)
-    const COLORS = ['#1d4ed8', '#93c5fd', '#15803d', '#86efac', '#c2410c', '#fdba74', '#6d28d9', '#c4b5fd'];
+    // One row per parser, with the data.json keys for each mode and a stable color.
+    const PARSERS = [
+      { name: 'C# managed', contig: 'dotnet-managed-rom',  multi: 'dotnet-managed-multiseg', color: '#2563eb' },
+      { name: 'Pure C',     contig: 'pure-c',              multi: 'pure-c-multiseg',         color: '#16a34a' },
+      { name: 'C# FFI',     contig: 'dotnet-ffi',          multi: 'dotnet-ffi-multiseg',     color: '#ea580c' },
+      { name: 'Kotlin FFI', contig: 'kotlin-ffi',          multi: 'kotlin-ffi-multiseg',     color: '#7c3aed' },
+    ];
+
+    function renderTable(elId, rows, mode) {
+      let html = '<table><thead><tr><th>Payload</th>' +
+        PARSERS.map(p => '<th>' + p.name + '</th>').join('') + '</tr></thead><tbody>';
+      for (const row of rows) {
+        const vals = PARSERS.map(p => row[p[mode]]).filter(v => v != null);
+        const min = vals.length ? Math.min.apply(null, vals) : null;
+        html += '<tr><td>' + row.label + '</td>' + PARSERS.map(p => {
+          const v = row[p[mode]];
+          const cls = (v != null && v === min) ? ' class="best"' : '';
+          return '<td' + cls + '>' + (v == null ? '—' : v.toFixed(0) + ' ns') + '</td>';
+        }).join('') + '</tr>';
+      }
+      document.getElementById(elId).innerHTML = html + '</tbody></table>';
+    }
+
+    function renderChart(canvasId, rows, mode) {
+      new Chart(document.getElementById(canvasId), {
+        type: 'bar',
+        data: {
+          labels: rows.map(r => r.label),
+          datasets: PARSERS.map(p => ({
+            label: p.name,
+            data: rows.map(r => r[p[mode]]),
+            backgroundColor: p.color,
+          })),
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { type: 'logarithmic', title: { display: true, text: 'ns/op (log scale)' } },
+            x: { title: { display: true, text: 'payload size' } },
+          },
+          plugins: { legend: { position: 'bottom' } },
+        },
+      });
+    }
 
     fetch('data.json', { cache: 'no-store' })
       .then(r => { if (!r.ok) throw new Error('no data'); return r.json(); })
       .then(d => {
-        const langs = d.langs, rows = d.rows;
         document.getElementById('meta').textContent = d.generated ? ('as of ' + d.generated) : '';
-
-        // --- table (best per row highlighted) ---
-        let html = '<table><thead><tr><th>Payload</th>' +
-          langs.map(l => '<th>' + l.label + '</th>').join('') + '</tr></thead><tbody>';
-        for (const row of rows) {
-          const vals = langs.map(l => row[l.key]).filter(v => v != null);
-          const min = Math.min.apply(null, vals);
-          html += '<tr><td>' + row.label + '</td>' + langs.map(l => {
-            const v = row[l.key];
-            const cls = (v != null && v === min) ? ' class="best"' : '';
-            return '<td' + cls + '>' + (v == null ? '—' : v.toFixed(0) + ' ns') + '</td>';
-          }).join('') + '</tr>';
-        }
-        html += '</tbody></table>';
-        document.getElementById('table').innerHTML = html;
-
-        // --- one chart, all series (grouped bars, log scale) ---
-        new Chart(document.getElementById('chart'), {
-          type: 'bar',
-          data: {
-            labels: rows.map(r => r.label),
-            datasets: langs.map((l, i) => ({
-              label: l.label,
-              data: rows.map(r => r[l.key]),
-              backgroundColor: COLORS[i % COLORS.length],
-            })),
-          },
-          options: {
-            responsive: true,
-            scales: {
-              y: { type: 'logarithmic', title: { display: true, text: 'ns/op (log scale)' } },
-              x: { title: { display: true, text: 'payload size' } },
-            },
-            plugins: { legend: { position: 'bottom' } },
-          },
-        });
+        renderTable('table-contig', d.rows, 'contig');
+        renderTable('table-multi', d.rows, 'multi');
+        renderChart('chart-contig', d.rows, 'contig');
+        renderChart('chart-multi', d.rows, 'multi');
       })
       .catch(() => {
-        document.getElementById('table').innerHTML =
-          '<p><em>No benchmark data yet — run the Cross-Language Benchmark workflow.</em></p>';
+        for (const id of ['table-contig', 'table-multi']) {
+          document.getElementById(id).innerHTML =
+            '<p><em>No benchmark data yet — run the Cross-Language Benchmark workflow.</em></p>';
+        }
         document.getElementById('meta').textContent = '';
       });
   </script>

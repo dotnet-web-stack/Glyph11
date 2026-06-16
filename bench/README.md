@@ -33,17 +33,17 @@ benchmarks page.
 
 | Payload | C# Ultra | Pure C  | C# (FFI) | Kotlin (FFI) |
 |---------|---------:|--------:|---------:|-------------:|
-| ~95 B   | 121 ns   | 94 ns   | 97 ns    | 103 ns |
-| 4 KB    | 756 ns   | 556 ns  | 565 ns   | 586 ns |
-| 32 KB   | 5363 ns  | 4154 ns | 4188 ns  | 4172 ns |
+| ~95 B   | 116 ns   | 93 ns   | 95 ns    | 100 ns |
+| 4 KB    | 734 ns   | 562 ns  | 551 ns   | 567 ns |
+| 32 KB   | 5127 ns  | 4138 ns | 4116 ns  | 4103 ns |
 
 **Multi-segment** (3 segments → allocate a buffer per request, linearize, parse):
 
 | Payload | C# Ultra | Pure C  | C# (FFI) | Kotlin (FFI) |
 |---------|---------:|--------:|---------:|-------------:|
-| ~95 B   | 265 ns   | 104 ns  | 121 ns   | 173 ns |
-| 4 KB    | 1376 ns  | 574 ns  | 629 ns   | 743 ns |
-| 32 KB   | 9369 ns  | 4624 ns | 4649 ns  | 5441 ns |
+| ~95 B   | 255 ns   | 102 ns  | 120 ns   | 173 ns |
+| 4 KB    | 1337 ns  | 570 ns  | 612 ns   | 769 ns |
+| 32 KB   | 9008 ns  | 4539 ns | 4590 ns  | 5325 ns |
 
 Single-segment parses the contiguous data in place. Multi-segment must first linearize
 into a contiguous buffer — and **every** parser allocates that buffer per request here,

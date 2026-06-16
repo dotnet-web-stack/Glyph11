@@ -21,11 +21,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Bake latest benchmark data from gh-pages
-        run: |
-          git fetch origin gh-pages
-          git show origin/gh-pages:benchmarks/cross-lang.json > site/data.json 2>/dev/null || true
-
       - name: Upload artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
