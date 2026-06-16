@@ -12,7 +12,15 @@ if(GLYPH11_SANITIZE)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
-set(GLYPH11_WARNINGS -Wall -Wextra -Werror)
+# GCC/Clang warning flags are not MSVC-compatible (cl treats -Wextra as /Wextra ->
+# error D8021). Use /W4 on MSVC; no /WX there since the cross-platform packaging
+# build just needs to compile (MSVC takes the scalar path — the SSE2 fast path is
+# guarded by __SSE2__, which MSVC doesn't define).
+if(MSVC)
+    set(GLYPH11_WARNINGS /W4)
+else()
+    set(GLYPH11_WARNINGS -Wall -Wextra -Werror)
+endif()
 
 # Static + shared from the same source.
 add_library(glyph11        STATIC src/glyph11.c)
