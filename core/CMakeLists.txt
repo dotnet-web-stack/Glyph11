@@ -17,13 +17,27 @@ set(GLYPH11_WARNINGS -Wall -Wextra -Werror)
 # Static + shared from the same source.
 add_library(glyph11        STATIC src/glyph11.c)
 add_library(glyph11_shared SHARED src/glyph11.c)
-set_target_properties(glyph11_shared PROPERTIES OUTPUT_NAME glyph11)
+# OUTPUT_NAME glyph11 -> libglyph11.so / libglyph11.dylib / glyph11.dll, matching
+# the [DllImport("glyph11")] name on every platform. WINDOWS_EXPORT_ALL_SYMBOLS makes
+# MSVC export the public C API from the DLL (it exports nothing by default), so the
+# P/Invoke binding can find the entry points without per-function __declspec annotations.
+set_target_properties(glyph11_shared PROPERTIES
+    OUTPUT_NAME glyph11
+    WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 foreach(t glyph11 glyph11_shared)
     target_include_directories(${t} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
     target_compile_options(${t} PRIVATE ${GLYPH11_WARNINGS})
     set_target_properties(${t} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endforeach()
+
+# Install just the shared library into a `native/` subdir so `cmake --install` stages it
+# to a predictable path on every platform (RUNTIME = glyph11.dll, LIBRARY = libglyph11.so
+# /.dylib) — the package-native CI matrix installs each RID then drops it into the NuGet's
+# runtimes/<rid>/native/. The import .lib (ARCHIVE) is intentionally not installed.
+install(TARGETS glyph11_shared
+    RUNTIME DESTINATION native
+    LIBRARY DESTINATION native)
 
 if(GLYPH11_BUILD_TESTS)
     enable_testing()
