@@ -58,3 +58,18 @@ So the multi-segment cost is the **allocation**, and the C core's advantage is n
 memory: a GC'd 32 KB array every request is what makes the managed path ~2×. (A hot path
 would reuse one scratch buffer instead — then every parser drops to ~1.0–1.1×.) Numbers
 vary run-to-run.
+
+**Chunked body** (decode a chunked transfer-encoding body — strip the framing, copy the
+payload into a reused output buffer):
+
+| Decoded size | C# managed | Pure C | C# (FFI) | Kotlin (FFI) |
+|--------------|-----------:|-------:|---------:|-------------:|
+| 256 B        | 20 ns      | 13 ns  | 21 ns    | 30 ns |
+| 4 KB         | 114 ns     | 71 ns  | 76 ns    | 89 ns |
+| 32 KB        | 806 ns     | 625 ns | 740 ns   | 749 ns |
+
+Chunked decode is memcpy-bound — the payload copy dominates, so all four land close, an
+order of magnitude under header parsing. Pure C leads (a tight decode-to-output memcpy);
+the managed path trails slightly because it loops the span parser chunk-by-chunk and
+copies each payload separately, where the native decoders stream the whole body in one
+call. The FFI paths add only P/Invoke / FFM call overhead over pure C.

@@ -78,6 +78,31 @@ static double bench_ms(const unsigned char* buf, size_t len, const glyph11_limit
     return best;
 }
 
+/* Chunked transfer-encoding: decode the whole body into a reused output buffer. */
+static double bench_chunked(const unsigned char* buf, size_t len, long iters)
+{
+    static unsigned char out[64 * 1024];
+    glyph11_chunk_decoder d;
+    size_t ic, ow;
+    for (long i = 0; i < iters / 10 + 1; i++) {  /* warmup */
+        glyph11_chunk_decoder_init(&d);
+        glyph11_chunk_decode(&d, buf, len, out, sizeof out, &ic, &ow);
+    }
+    double best = 1e30;
+    for (int trial = 0; trial < 5; trial++) {
+        struct timespec t0, t1;
+        clock_gettime(CLOCK_MONOTONIC, &t0);
+        for (long i = 0; i < iters; i++) {
+            glyph11_chunk_decoder_init(&d);
+            glyph11_chunk_decode(&d, buf, len, out, sizeof out, &ic, &ow);
+        }
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        double ns = ((double)(t1.tv_sec - t0.tv_sec) * 1e9 + (double)(t1.tv_nsec - t0.tv_nsec)) / (double)iters;
+        if (ns < best) best = ns;
+    }
+    return best;
+}
+
 int main(int argc, char** argv)
 {
     const char* dir = argc > 1 ? argv[1] : ".";
@@ -98,6 +123,19 @@ int main(int argc, char** argv)
         unsigned char* b = read_file(path, &len);
         printf("pure-c,%s,%.1f\n", cases[i].name, bench(b, len, &lim, cases[i].iters));
         printf("pure-c-multiseg,%s,%.1f\n", cases[i].name, bench_ms(b, len, &lim, cases[i].iters));
+        free(b);
+    }
+
+    struct { const char* name; const char* file; long iters; } chunked[] = {
+        { "small", "chunked_small.bin", 1000000 },
+        { "4k",    "chunked_4k.bin",     300000 },
+        { "32k",   "chunked_32k.bin",     50000 },
+    };
+    for (int i = 0; i < 3; i++) {
+        size_t len;
+        snprintf(path, sizeof path, "%s/%s", dir, chunked[i].file);
+        unsigned char* b = read_file(path, &len);
+        printf("pure-c-chunked,%s,%.1f\n", chunked[i].name, bench_chunked(b, len, chunked[i].iters));
         free(b);
     }
     return 0;

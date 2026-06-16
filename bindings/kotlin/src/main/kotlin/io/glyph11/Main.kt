@@ -23,6 +23,16 @@ private fun bench(dir: String) {
         println("kotlin-ffi,%s,%.1f".format(name, Glyph11.benchParse(data, iters)))
         println("kotlin-ffi-multiseg,%s,%.1f".format(name, Glyph11.benchParse(data, iters, multiSeg = true)))
     }
+
+    val chunked = listOf(
+        Triple("small", "chunked_small.bin", 1_000_000L),
+        Triple("4k", "chunked_4k.bin", 300_000L),
+        Triple("32k", "chunked_32k.bin", 50_000L),
+    )
+    for ((name, file, iters) in chunked) {
+        val data = File(dir, file).readBytes()
+        println("kotlin-ffi-chunked,%s,%.1f".format(name, Glyph11.benchChunked(data, iters)))
+    }
 }
 
 /** Smoke test: parse a few requests via the native core and verify the results. */
