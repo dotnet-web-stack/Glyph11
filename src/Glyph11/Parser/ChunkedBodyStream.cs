@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace Glyph11.Parser;
 
 /// <summary>
@@ -270,6 +272,185 @@ public struct ChunkedBodyStream
         }
 
         // Ran out of input
+        this = snapshot;
+        return ChunkResult.NeedMoreData;
+    }
+
+    /// <summary>
+    /// Multi-segment overload of <see cref="TryReadChunk(ReadOnlySpan{byte}, out int, out int, out int)"/>.
+    /// Reads the next chunk directly from a <see cref="ReadOnlySequence{T}"/> — <b>no linearization</b>.
+    /// On <see cref="ChunkResult.Chunk"/>, <paramref name="chunkData"/> is the decoded payload as a
+    /// (possibly multi-segment) slice of <paramref name="input"/>; copy it out before advancing the
+    /// reader past <paramref name="bytesConsumed"/>.
+    /// </summary>
+    public ChunkResult TryReadChunk(
+        in ReadOnlySequence<byte> input,
+        out long bytesConsumed,
+        out ReadOnlySequence<byte> chunkData)
+    {
+        bytesConsumed = 0;
+        chunkData = default;
+
+        var reader = new SequenceReader<byte>(input);
+        var snapshot = this;                 // roll back on NeedMoreData — caller re-presents the bytes
+        ReadOnlySequence<byte> pending = default;
+
+        while (!reader.End)
+        {
+            switch (_phase)
+            {
+                case Phase.ChunkSize:
+                {
+                    reader.TryPeek(out byte b);
+
+                    if (_digitCount == 0 && (b == (byte)' ' || b == (byte)'\t'))
+                        throw new HttpParseException("Leading whitespace in chunk size.");
+                    if (_digitCount == 0 && b == (byte)'-')
+                        throw new HttpParseException("Negative chunk size.");
+                    if (_digitCount == 1 && _chunkSize == 0 && (b == (byte)'x' || b == (byte)'X'))
+                        throw new HttpParseException("Hex prefix in chunk size.");
+
+                    if (IsHexDigit(b))
+                    {
+                        if (_digitCount >= 16)
+                            throw new HttpParseException("Chunk size overflow.");
+                        _chunkSize = (_chunkSize << 4) | (uint)HexVal(b);
+                        _digitCount++;
+                        reader.Advance(1);
+                        continue;
+                    }
+
+                    if (_digitCount == 0)
+                        throw new HttpParseException("Invalid character in chunk size.");
+                    if (b == (byte)'_')
+                        throw new HttpParseException("Underscore in chunk size.");
+                    if (b == (byte)';')
+                    {
+                        _extensionBytes = 0;
+                        _phase = Phase.Extension;
+                        reader.Advance(1);
+                        continue;
+                    }
+                    if (b == (byte)'\n')
+                        throw new HttpParseException("Bare LF after chunk size.");
+                    if (b == (byte)'\r')
+                    {
+                        _phase = Phase.HeaderCrlf;
+                        reader.Advance(1);
+                        continue;
+                    }
+                    throw new HttpParseException("Missing CRLF after chunk size.");
+                }
+
+                case Phase.Extension:
+                {
+                    reader.TryPeek(out byte b);
+                    if (_extensionBytes > MaxChunkExtensionBytes)
+                        throw new HttpParseException("Chunk extension too large.");
+                    if (b == 0)
+                        throw new HttpParseException("NUL byte in chunk extension.");
+                    if (b == (byte)'\n')
+                        throw new HttpParseException("Bare LF in chunk extension.");
+                    if (b == (byte)'\r')
+                    {
+                        if (_extensionBytes == 0)
+                            throw new HttpParseException("Bare semicolon with no chunk extension name.");
+                        _phase = Phase.HeaderCrlf;
+                        reader.Advance(1);
+                        continue;
+                    }
+                    _extensionBytes++;
+                    reader.Advance(1);
+                    continue;
+                }
+
+                case Phase.HeaderCrlf:
+                {
+                    reader.TryPeek(out byte b);
+                    if (b != (byte)'\n')
+                        throw new HttpParseException("Missing CRLF after chunk size.");
+                    reader.Advance(1);
+
+                    if (_chunkSize == 0)
+                    {
+                        _phase = Phase.Trailers;
+                        continue;
+                    }
+                    _remaining = _chunkSize;
+                    _phase = Phase.ChunkData;
+                    continue;
+                }
+
+                case Phase.ChunkData:
+                {
+                    if (reader.Remaining < _remaining)
+                    {
+                        this = snapshot;
+                        return ChunkResult.NeedMoreData;
+                    }
+                    pending = reader.UnreadSequence.Slice(0, _remaining);
+                    reader.Advance(_remaining);
+                    _remaining = 0;
+                    _phase = Phase.DataCrlf;
+                    continue;
+                }
+
+                case Phase.DataCrlf:
+                {
+                    if (reader.Remaining < 2)
+                    {
+                        this = snapshot;
+                        return ChunkResult.NeedMoreData;
+                    }
+                    reader.TryPeek(out byte b);
+                    if (b == (byte)'\n')
+                        throw new HttpParseException("Bare LF after chunk data.");
+                    if (!reader.IsNext(ParserConstants.Crlf, advancePast: true))
+                        throw new HttpParseException("Missing CRLF after chunk data.");
+
+                    _phase = Phase.ChunkSize;
+                    _chunkSize = 0;
+                    _digitCount = 0;
+                    _extensionBytes = 0;
+
+                    bytesConsumed = reader.Consumed;
+                    chunkData = pending;
+                    return ChunkResult.Chunk;
+                }
+
+                case Phase.Trailers:
+                {
+                    // empty line = end of trailers
+                    if (reader.IsNext(ParserConstants.Crlf, advancePast: true))
+                    {
+                        _phase = Phase.Complete;
+                        bytesConsumed = reader.Consumed;
+                        return ChunkResult.Completed;
+                    }
+
+                    reader.TryPeek(out byte b);
+                    if (b == (byte)'\n')
+                        throw new HttpParseException("Bare LF in chunked trailer.");
+
+                    // a trailer line, up to CRLF; a bare LF inside it is invalid
+                    if (!reader.TryReadTo(out ReadOnlySequence<byte> line, ParserConstants.Crlf, advancePastDelimiter: true))
+                    {
+                        this = snapshot;
+                        return ChunkResult.NeedMoreData;
+                    }
+                    if (line.PositionOf((byte)'\n') is not null)
+                        throw new HttpParseException("Bare LF in chunked trailer.");
+                    continue;
+                }
+
+                case Phase.Complete:
+                {
+                    bytesConsumed = 0;
+                    return ChunkResult.Completed;
+                }
+            }
+        }
+
         this = snapshot;
         return ChunkResult.NeedMoreData;
     }
