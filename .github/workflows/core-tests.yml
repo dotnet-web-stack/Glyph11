@@ -1,0 +1,44 @@
+name: Core Tests
+
+# The C core's test suite (previously only run locally). Covers the portable SSE2
+# build, the AVX2 build shipped for linux-x64, and an ASan/UBSan run.
+on:
+  push:
+    paths:
+      - 'core/**'
+      - '.github/workflows/core-tests.yml'
+  pull_request:
+    paths:
+      - 'core/**'
+      - '.github/workflows/core-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: sse2 (portable baseline)
+            cmake: -DCMAKE_BUILD_TYPE=Release
+          - name: avx2 (linux-x64 package)
+            cmake: -DCMAKE_BUILD_TYPE=Release -DGLYPH11_X86_AVX2=ON
+            need_avx2: true
+          - name: asan+ubsan
+            cmake: -DCMAKE_BUILD_TYPE=Debug -DGLYPH11_SANITIZE=ON
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Build & test
+        run: |
+          if [ "${{ matrix.need_avx2 }}" = "true" ] && ! grep -q avx2 /proc/cpuinfo; then
+            echo "::warning::runner lacks AVX2 — skipping AVX2 test"; exit 0
+          fi
+          cmake -S core -B core/build ${{ matrix.cmake }}
+          cmake --build core/build
+          ctest --test-dir core/build --output-on-failure

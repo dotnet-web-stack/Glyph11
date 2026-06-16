@@ -11,9 +11,12 @@ trap 'rm -rf "$pay" "$csv"' EXIT
 python3 "$root/bench/gen_payloads.py" "$pay" >&2
 
 # --- build the C core (release) ---
+# AVX2 to match the shipped linux-x64 package binary (GLYPH11_X86_AVX2) — the bench
+# host must be AVX2-capable (2013+; CI ubuntu runners are). Drop the flag to bench the
+# portable SSE2 build instead.
 cmake -S "$root/core" -B "$root/core/build-rel" \
     -DGLYPH11_SANITIZE=OFF -DGLYPH11_BUILD_TESTS=OFF -DGLYPH11_BUILD_BENCH=ON \
-    -DCMAKE_BUILD_TYPE=Release >/dev/null
+    -DGLYPH11_X86_AVX2=ON -DCMAKE_BUILD_TYPE=Release >/dev/null
 cmake --build "$root/core/build-rel" >/dev/null
 so="$root/core/build-rel/libglyph11.so"
 

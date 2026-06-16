@@ -34,7 +34,9 @@ jobs:
         include:
           - rid: linux-x64
             runner: ubuntu-latest
-            cmake: ''
+            # AVX2 microarch level: the 256-bit scanners inline (~15% faster on large
+            # headers). Requires a 2013+ (Haswell) CPU — fine for modern linux-x64.
+            cmake: -DGLYPH11_X86_AVX2=ON
           - rid: linux-arm64
             runner: ubuntu-latest
             apt: gcc-aarch64-linux-gnu

@@ -33,9 +33,14 @@ benchmarks page.
 
 | Payload | C# Ultra | Pure C  | C# (FFI) | Kotlin (FFI) |
 |---------|---------:|--------:|---------:|-------------:|
-| ~95 B   | 116 ns   | 93 ns   | 95 ns    | 100 ns |
-| 4 KB    | 734 ns   | 562 ns  | 551 ns   | 567 ns |
-| 32 KB   | 5127 ns  | 4138 ns | 4116 ns  | 4103 ns |
+| ~95 B   | 116 ns   | 98 ns   | 97 ns    | 100 ns |
+| 4 KB    | 730 ns   | 503 ns  | 502 ns   | 513 ns |
+| 32 KB   | 5269 ns  | 3628 ns | 3675 ns  | 3696 ns |
+
+The native (Pure C / FFI / Kotlin) numbers use the AVX2 build shipped for `linux-x64`
+(`-march=x86-64-v3`), which inlines the 256-bit scanners — ~1.14× over the portable SSE2
+build on the 32 KB header parse (the win is in the scanners, so it shows most on large,
+header-heavy payloads). The managed C# parser is unchanged.
 
 **Multi-segment** (3 segments → allocate a buffer per request, linearize, parse):
 

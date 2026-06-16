@@ -13,6 +13,11 @@ plain `<PackageReference>` works with no extra setup:
 
 The right binary is resolved from `runtimes/<rid>/native/` automatically at build/publish.
 
+> **`linux-x64` requires AVX2** (a 2013+ "Haswell" or newer CPU — universal on modern
+> servers and cloud). It's built at the `x86-64-v3` microarchitecture level so the
+> SIMD scanners inline into the parse loop (~15% faster on large headers). All other
+> RIDs use the portable baseline.
+
 > Looking for the dependency-free, pure-managed parser? Use the
 > [**`Glyph11`**](https://www.nuget.org/packages/Glyph11) package instead. This one
 > trades portability for the native core (and a per-platform binary).
