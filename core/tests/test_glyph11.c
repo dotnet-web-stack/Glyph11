@@ -39,6 +39,25 @@ static void expect(const char* name, const void* data, size_t len,
 #define E(name, lit, want)        expect(name, lit, sizeof(lit) - 1, NULL, want)
 #define EL(name, lit, L, want)    expect(name, lit, sizeof(lit) - 1, L,    want)
 
+/* chunked decoder: decode `in` in one call; check the result and (on DONE) the body */
+static void chk(const char* name, const char* in, glyph11_chunk_result want, const char* want_out)
+{
+    glyph11_chunk_decoder d;
+    glyph11_chunk_decoder_init(&d);
+    unsigned char out[256];
+    size_t written;
+    glyph11_chunk_result r = glyph11_chunk_decode(
+        &d, (const uint8_t*)in, strlen(in), out, sizeof out, NULL, &written);
+    g_total++;
+    int ok = (r == want);
+    if (ok && want == GLYPH11_CHUNK_DONE)
+        ok = (written == strlen(want_out)) && (memcmp(out, want_out, written) == 0);
+    if (!ok) {
+        g_fail++;
+        printf("  FAIL chunk %-20s result=%d written=%zu\n", name, (int)r, written);
+    }
+}
+
 static void test_valid_spans(void)
 {
     const char* in = "GET /api/users?a=1&b=2 HTTP/1.1\r\nHost: example.com\r\nAccept: */*\r\n\r\n";
@@ -162,6 +181,34 @@ int main(void)
     {
         glyph11_limits L; glyph11_limits_default(&L); L.max_query_param_count = 1;
         EL("too-many-query", "GET /?a=1&b=2 HTTP/1.1\r\nHost: x\r\n\r\n", &L, GLYPH11_ERR_TOO_MANY_QUERY_PARAMS);
+    }
+
+    /* ---- chunked transfer-encoding decoder ---- */
+    chk("chunk-single",     "5\r\nHello\r\n0\r\n\r\n",                GLYPH11_CHUNK_DONE,  "Hello");
+    chk("chunk-multi",      "5\r\nHello\r\n6\r\n World\r\n0\r\n\r\n", GLYPH11_CHUNK_DONE,  "Hello World");
+    chk("chunk-ext",        "5;a=b\r\nHello\r\n0\r\n\r\n",            GLYPH11_CHUNK_DONE,  "Hello");
+    chk("chunk-trailer",    "5\r\nHello\r\n0\r\nX: y\r\n\r\n",        GLYPH11_CHUNK_DONE,  "Hello");
+    chk("chunk-hex-size",   "a\r\n0123456789\r\n0\r\n\r\n",          GLYPH11_CHUNK_DONE,  "0123456789");
+    chk("chunk-incomplete", "5\r\nHel",                              GLYPH11_CHUNK_OK,    "");
+    chk("chunk-bad-hex",    "G\r\n\r\n",                             GLYPH11_CHUNK_ERROR, "");
+    chk("chunk-bare-lf",    "5\r\nHello\nX",                         GLYPH11_CHUNK_ERROR, "");
+    chk("chunk-leading-ws", " 5\r\n",                                GLYPH11_CHUNK_ERROR, "");
+    chk("chunk-hex-prefix", "0x5\r\n",                               GLYPH11_CHUNK_ERROR, "");
+    chk("chunk-negative",   "-5\r\n",                                GLYPH11_CHUNK_ERROR, "");
+
+    /* split across two calls: a chunk's data crosses the call boundary */
+    {
+        glyph11_chunk_decoder d;
+        glyph11_chunk_decoder_init(&d);
+        unsigned char out[64];
+        size_t w1, w2;
+        glyph11_chunk_result r1 = glyph11_chunk_decode(&d, (const uint8_t*)"5\r\nHel", 6, out, sizeof out, NULL, &w1);
+        glyph11_chunk_result r2 = glyph11_chunk_decode(&d, (const uint8_t*)"lo\r\n0\r\n\r\n", 9, out + w1, sizeof out - w1, NULL, &w2);
+        g_total++;
+        if (!(r1 == GLYPH11_CHUNK_OK && r2 == GLYPH11_CHUNK_DONE && w1 + w2 == 5 && memcmp(out, "Hello", 5) == 0)) {
+            g_fail++;
+            printf("  FAIL chunk-split\n");
+        }
     }
 
     printf("%d/%d passed%s\n", g_total - g_fail, g_total, g_fail ? "  *** FAILURES ***" : "");
