@@ -6,10 +6,25 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 option(GLYPH11_SANITIZE    "Build with AddressSanitizer + UBSan" OFF)
 option(GLYPH11_BUILD_TESTS "Build the test suite"                ON)
+option(GLYPH11_X86_AVX2    "x86-64: require AVX2 (build -march=x86-64-v3)"  OFF)
 
 if(GLYPH11_SANITIZE)
     add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
     add_link_options(-fsanitize=address,undefined)
+endif()
+
+# Build for the AVX2 microarchitecture level so the 256-bit scanner tier (gated on
+# __AVX2__ in glyph11.c) inlines into the parse loop — ~15% faster on large headers.
+# This makes the binary REQUIRE a 2013+ (Haswell) CPU; only enable it for RIDs where
+# that's acceptable (the linux-x64 package). Off by default keeps the binary portable.
+if(GLYPH11_X86_AVX2)
+    include(CheckCCompilerFlag)
+    check_c_compiler_flag("-march=x86-64-v3" GLYPH11_HAS_V3)
+    if(GLYPH11_HAS_V3)
+        add_compile_options(-march=x86-64-v3)
+    else()
+        message(WARNING "GLYPH11_X86_AVX2 set but -march=x86-64-v3 unsupported; building baseline")
+    endif()
 endif()
 
 # GCC/Clang warning flags are not MSVC-compatible (cl treats -Wextra as /Wextra ->

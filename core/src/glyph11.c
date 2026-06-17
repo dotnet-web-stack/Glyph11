@@ -13,6 +13,9 @@
 #if defined(__SSE2__)
 #  include <emmintrin.h>
 #endif
+#if defined(__AVX2__)
+#  include <immintrin.h>
+#endif
 
 /* ======================================================================== */
 /*  Versioning / limits / status                                            */
@@ -130,14 +133,33 @@ static long first_invalid(const uint8_t* p, size_t len, int (*pred)(uint8_t))
 }
 
 /* Range-class scanners for the long, hot fields (header value, request-target).
-   SSE2-accelerated; scalar fallback elsewhere. (NEON is a TODO pending ARM CI;
-   the scalar fallback keeps non-x86 correct, just not vectorized.) */
+   AVX2 (32 B/iter) when built -march=x86-64-v3 (GLYPH11_X86_AVX2 — the linux-x64
+   package), else SSE2 (16 B/iter); scalar fallback on non-x86. The AVX2 tier is
+   compile-time gated so it INLINES into the parse loop (a runtime-dispatched call
+   was measured slower — the call overhead beat the width). (NEON is a TODO pending
+   ARM CI; the scalar fallback keeps non-x86 correct, just not vectorized.) */
 
 /* index of first byte not a valid field-value char (RFC 9110 §5.5), or -1.
    valid = HTAB(0x09) | (b >= 0x20 & b != 0x7F)  [obs-text 0x80-0xFF allowed] */
 static long scan_fieldvalue(const uint8_t* p, size_t len)
 {
     size_t i = 0;
+#if defined(__AVX2__)
+    {
+        const __m256i c09 = _mm256_set1_epi8(0x09);
+        const __m256i c20 = _mm256_set1_epi8(0x20);
+        const __m256i c7f = _mm256_set1_epi8(0x7F);
+        for (; i + 32 <= len; i += 32) {
+            __m256i v     = _mm256_loadu_si256((const __m256i*)(p + i));
+            __m256i ge20  = _mm256_cmpeq_epi8(_mm256_max_epu8(v, c20), v);  /* b >= 0x20 */
+            __m256i htab  = _mm256_cmpeq_epi8(v, c09);
+            __m256i del   = _mm256_cmpeq_epi8(v, c7f);
+            __m256i valid = _mm256_or_si256(htab, _mm256_andnot_si256(del, ge20));
+            unsigned mask = (unsigned)_mm256_movemask_epi8(valid);
+            if (mask != 0xFFFFFFFFu) return (long)(i + (size_t)__builtin_ctz(~mask));
+        }
+    }
+#endif
 #if defined(__SSE2__)
     const __m128i c09 = _mm_set1_epi8(0x09);
     const __m128i c20 = _mm_set1_epi8(0x20);
@@ -162,6 +184,20 @@ static long scan_fieldvalue(const uint8_t* p, size_t len)
 static long scan_reqtarget(const uint8_t* p, size_t len)
 {
     size_t i = 0;
+#if defined(__AVX2__)
+    {
+        const __m256i c20 = _mm256_set1_epi8(0x20);
+        const __m256i c7e = _mm256_set1_epi8(0x7E);
+        for (; i + 32 <= len; i += 32) {
+            __m256i v     = _mm256_loadu_si256((const __m256i*)(p + i));
+            __m256i ge20  = _mm256_cmpeq_epi8(_mm256_max_epu8(v, c20), v);  /* b >= 0x20 */
+            __m256i le7e  = _mm256_cmpeq_epi8(_mm256_min_epu8(v, c7e), v);  /* b <= 0x7E */
+            __m256i valid = _mm256_and_si256(ge20, le7e);
+            unsigned mask = (unsigned)_mm256_movemask_epi8(valid);
+            if (mask != 0xFFFFFFFFu) return (long)(i + (size_t)__builtin_ctz(~mask));
+        }
+    }
+#endif
 #if defined(__SSE2__)
     const __m128i c20 = _mm_set1_epi8(0x20);
     const __m128i c7e = _mm_set1_epi8(0x7E);
