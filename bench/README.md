@@ -23,9 +23,9 @@ the per-call allocation the managed multi-segment path does.
 ./bench/run-all.sh          # builds all, writes bench/results/{results.md,results.json}
 ```
 
-Requires gcc + CMake, .NET 10, and JDK 21 + Gradle. The CI workflow
-`cross-bench.yml` runs the same script and publishes `results.json` to the live
-benchmarks page.
+Requires gcc + CMake, .NET 10, and JDK 21 + Gradle. These are the cross-language
+harnesses (pure C, C# managed + FFI, Kotlin FFI); the published docs site uses the
+per-package request + chunked tables in the root README.
 
 ## Latest local run (best of 5 trials; .NET 10, JDK 21, x86-64)
 

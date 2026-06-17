@@ -9,7 +9,7 @@ raw throughput.
 [![Glyph11.Native](https://img.shields.io/nuget/v/Glyph11.Native.svg?label=Glyph11.Native)](https://www.nuget.org/packages/Glyph11.Native/)
 [![Glyph11.Pico](https://img.shields.io/nuget/v/Glyph11.Pico.svg?label=Glyph11.Pico)](https://www.nuget.org/packages/Glyph11.Pico/)
 ![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-512bd4)
-[![Docs](https://img.shields.io/badge/docs%20%26%20benchmarks-live-blue)](https://dotnet-web-stack.github.io/Glyph11/)
+[![Docs](https://img.shields.io/badge/docs%20%26%20benchmarks-online-blue)](https://dotnet-web-stack.github.io/Glyph11/)
 
 ## Three packages
 
@@ -130,8 +130,9 @@ var r = stream.TryReadChunk(input, out int consumed, out int dataOffset, out int
 ## Benchmarks
 
 `linux-x64`, best-of-5, ns/op (lower is better). `Glyph11.Native` / `Glyph11.Pico` are the
-AVX2 / SSE4.2 native builds. Full methodology and live numbers:
-**<https://dotnet-web-stack.github.io/Glyph11/>**
+AVX2 / SSE4.2 native builds. The same tables and usage docs are at
+**<https://dotnet-web-stack.github.io/Glyph11/>**; the harnesses are in
+[`bench/`](bench).
 
 **Request header parsing** (→ `BinaryRequest` for Glyph11 / Pico; raw spans for Native):
 
