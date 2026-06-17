@@ -1,5 +1,10 @@
 name: Release
 
+# Publishes all three NuGet packages at their csproj versions:
+#   Glyph11 (managed) here, and Glyph11.Native / Glyph11.Pico via their package
+#   workflows (which run the full native build matrices, then pack + push).
+# Every push uses --skip-duplicate, so re-running only publishes versions not yet
+# on NuGet.org — bump a package's <Version> and re-run to release it.
 on:
   workflow_dispatch:
 
@@ -9,15 +14,11 @@ permissions:
 
 jobs:
 
-  publish:
-
-    name: Build & Publish Packages
-
+  managed:
+    name: Glyph11 (managed)
     runs-on: windows-latest
-
     environment:
       name: production
-
     steps:
       - name: Checkout source
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -31,9 +32,6 @@ jobs:
             8.0
             9.0
             10.0
-
-      - name: Setup NuGet CLI
-        uses: NuGet/setup-nuget@323ab0502cd38fdc493335025a96c8fdb0edc71f # v2
 
       - name: Restore dependencies
         run: dotnet restore
@@ -56,3 +54,19 @@ jobs:
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: dotnet nuget push *.nupkg -k "$env:NUGET_API_KEY" -s https://api.nuget.org/v3/index.json --skip-duplicate
+
+  # Build the 6-RID native matrix, pack, and publish Glyph11.Native at its csproj version.
+  native:
+    name: Glyph11.Native
+    uses: ./.github/workflows/package-native.yml
+    with:
+      publish: true
+    secrets: inherit
+
+  # Build the 6-RID native matrix, pack, and publish Glyph11.Pico at its csproj version.
+  pico:
+    name: Glyph11.Pico
+    uses: ./.github/workflows/package-pico.yml
+    with:
+      publish: true
+    secrets: inherit
