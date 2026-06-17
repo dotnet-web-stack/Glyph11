@@ -1,17 +1,18 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
         <OutputType>exe</OutputType>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
         <IsPackable>false</IsPackable>
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\src\Glyph11\Glyph11.csproj" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+        <!-- The three packages the docs-site benchmark compares. -->
+        <ProjectReference Include="..\src\Glyph11\Glyph11.csproj" />
+        <ProjectReference Include="..\bindings\dotnet\Glyph11.Native\Glyph11.Native.csproj" />
+        <ProjectReference Include="..\bindings\dotnet\Glyph11.Pico\Glyph11.Pico.csproj" />
     </ItemGroup>
 
 </Project>
