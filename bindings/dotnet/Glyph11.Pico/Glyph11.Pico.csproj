@@ -11,9 +11,9 @@
              shape as Glyph11 (which it depends on for the type + chunked decoding), but
              skips glyph11's hardening — picohttpparser's validation only. -->
         <PackageId>Glyph11.Pico</PackageId>
-        <Version>0.1.0</Version>
-        <AssemblyVersion>0.1.0.0</AssemblyVersion>
-        <FileVersion>0.1.0.0</FileVersion>
+        <Version>0.0.1</Version>
+        <AssemblyVersion>0.0.1.0</AssemblyVersion>
+        <FileVersion>0.0.1.0</FileVersion>
         <Description>A fast HTTP/1.x request parser: picohttpparser (native, SSE4.2) tokenizes, then fills the same BinaryRequest glyph11 returns. No extra compliance checks beyond picohttpparser's — built for speed. Chunked decoding reuses glyph11's ChunkedBodyStream.</Description>
         <PackageTags>HTTP Parser picohttpparser Native FFI Fast</PackageTags>
 
