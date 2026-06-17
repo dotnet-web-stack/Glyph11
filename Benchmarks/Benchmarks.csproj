@@ -7,7 +7,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\tests\GenHTTP\GenHTTP.csproj" />
       <ProjectReference Include="..\src\Glyph11\Glyph11.csproj" />
     </ItemGroup>
 

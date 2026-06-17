@@ -12,8 +12,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Glyph11.Native.Example", ".
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Glyph11.Pico.Example", "..\Examples\Glyph11.Pico.Example\Glyph11.Pico.Example.csproj", "{CE3462D0-F32A-4ED0-91E1-6B03980FB656}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GenHTTP", "..\tests\GenHTTP\GenHTTP.csproj", "{AA33875A-1156-453A-A11D-129C7F72C488}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -96,18 +94,6 @@ Global
 		{CE3462D0-F32A-4ED0-91E1-6B03980FB656}.Release|x64.Build.0 = Release|Any CPU
 		{CE3462D0-F32A-4ED0-91E1-6B03980FB656}.Release|x86.ActiveCfg = Release|Any CPU
 		{CE3462D0-F32A-4ED0-91E1-6B03980FB656}.Release|x86.Build.0 = Release|Any CPU
-		{AA33875A-1156-453A-A11D-129C7F72C488}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{AA33875A-1156-453A-A11D-129C7F72C488}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{AA33875A-1156-453A-A11D-129C7F72C488}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{AA33875A-1156-453A-A11D-129C7F72C488}.Debug|x64.Build.0 = Debug|Any CPU
-		{AA33875A-1156-453A-A11D-129C7F72C488}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{AA33875A-1156-453A-A11D-129C7F72C488}.Debug|x86.Build.0 = Debug|Any CPU
-		{AA33875A-1156-453A-A11D-129C7F72C488}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{AA33875A-1156-453A-A11D-129C7F72C488}.Release|Any CPU.Build.0 = Release|Any CPU
-		{AA33875A-1156-453A-A11D-129C7F72C488}.Release|x64.ActiveCfg = Release|Any CPU
-		{AA33875A-1156-453A-A11D-129C7F72C488}.Release|x64.Build.0 = Release|Any CPU
-		{AA33875A-1156-453A-A11D-129C7F72C488}.Release|x86.ActiveCfg = Release|Any CPU
-		{AA33875A-1156-453A-A11D-129C7F72C488}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -15,7 +15,7 @@ public static class BenchmarkData
             "GET /route?p1=1&p2=2&p3=3&p4=4 HTTP/1.1\r\n" +
             "Host: localhost\r\n" +
             "Content-Length: 100\r\n" +
-            "Server: GenHTTP\r\n\r\n");
+            "Server: Glyph11\r\n\r\n");
     }
 
     /// <summary>

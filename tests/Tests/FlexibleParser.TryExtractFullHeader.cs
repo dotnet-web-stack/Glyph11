@@ -1,7 +1,5 @@
 using System.Buffers;
 using System.Text;
-using GenHTTP.Protocol;
-using GenHTTP.Types;
 using Glyph11.Parser.FlexibleParser;
 using Glyph11.Protocol;
 
@@ -17,14 +15,14 @@ public class FlexibleParserTryExtractFullHeader_ROM
         var request =
             "GET /route?p1=1&p2=2&p3=3&p4=4 HTTP/1.1\r\n" +
             "Content-Length: 100\r\n" +
-            "Server: GenHTTP\r\n" +
+            "Server: Glyph11\r\n" +
             "\r\n";
 
         ReadOnlyMemory<byte> rom = Encoding.ASCII.GetBytes(request);
 
-        var data = new Request();
+        var data = new BinaryRequest();
 
-        var parsed = FlexibleParser.TryExtractFullHeaderReadOnlyMemory(ref rom, data.Source, out var position);
+        var parsed = FlexibleParser.TryExtractFullHeaderReadOnlyMemory(ref rom, data, out var position);
 
         Assert.True(parsed);
         AssertRequestParsedCorrectly(data);
@@ -38,9 +36,9 @@ public class FlexibleParserTryExtractFullHeader_ROM
     {
         ReadOnlySequence<byte> segmented = CreateMultiSegment();
 
-        var data = new Request();
+        var data = new BinaryRequest();
 
-        var parsed = FlexibleParser.TryExtractFullHeader(ref segmented, data.Source, out var position);
+        var parsed = FlexibleParser.TryExtractFullHeader(ref segmented, data, out var position);
 
         Assert.True(parsed);
         AssertRequestParsedCorrectly(data);
@@ -48,17 +46,14 @@ public class FlexibleParserTryExtractFullHeader_ROM
         Assert.Equal((int)segmented.Length - 1, position);
     }
 
-    private static void AssertRequestParsedCorrectly(Request data)
+    private static void AssertRequestParsedCorrectly(BinaryRequest data)
     {
-        // Method (enum + raw bytes)
-        Assert.Equal(RequestMethod.Get, data.Method);
-        AssertAscii.Equal("GET", data.Source.Method);
-
-        // Route (path only)
-        AssertAscii.Equal(ExpectedPath, data.Source.Path);
+        // Method + path (path only, query stripped)
+        AssertAscii.Equal("GET", data.Method);
+        AssertAscii.Equal(ExpectedPath, data.Path);
 
         // Query params
-        var qp = data.Source.QueryParameters;
+        var qp = data.QueryParameters;
         Assert.Equal(4, qp.Count);
 
         AssertKeyValue(qp, "p1", "1");
@@ -67,11 +62,11 @@ public class FlexibleParserTryExtractFullHeader_ROM
         AssertKeyValue(qp, "p4", "4");
 
         // Headers
-        var headers = data.Source.Headers;
+        var headers = data.Headers;
         Assert.Equal(2, headers.Count);
 
         AssertKeyValue(headers, "Content-Length", "100");
-        AssertKeyValue(headers, "Server", "GenHTTP");
+        AssertKeyValue(headers, "Server", "Glyph11");
     }
 
     private static void AssertKeyValue(KeyValueList list, string expectedKey, string expectedValue)
@@ -106,7 +101,7 @@ public class FlexibleParserTryExtractFullHeader_ROM
     {
         var seg1 = "GET /route?p1=1&p2=2&p3=3&p4=4 HT"u8.ToArray();
         var seg2 = "TP/1.1\r\nContent-Length: 100\r\nServer: "u8.ToArray();
-        var seg3 = "GenHTTP\r\n\r\n"u8.ToArray();
+        var seg3 = "Glyph11\r\n\r\n"u8.ToArray();
 
         var first = new Glyph11.Utils.BufferSegment(seg1);
         var last = first.Append(seg2).Append(seg3);
