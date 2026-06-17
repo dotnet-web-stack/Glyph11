@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glyph11 (managed) — Glyph11 docs</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<button class="menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="index.html">Glyph<b>11</b></a>
+    <nav>
+      <a href="index.html">Overview</a>
+      <div class="group">Packages</div>
+      <a href="glyph11.html" class="active">Glyph11</a>
+      <a href="glyph11-native.html">Glyph11.Native</a>
+      <a href="glyph11-pico.html">Glyph11.Pico</a>
+      <div class="group">On this page</div>
+      <a href="#install" class="sub">Install</a>
+      <a href="#quickstart" class="sub">Quick start</a>
+      <a href="#result" class="sub">Reading the result</a>
+      <a href="#contiguous" class="sub">Contiguous fast path</a>
+      <a href="#limits" class="sub">Limits</a>
+      <a href="#pipereader" class="sub">PipeReader loop</a>
+      <a href="#chunked" class="sub">Chunked bodies</a>
+      <a href="#errors" class="sub">Errors &amp; reuse</a>
+      <div class="group">Reference</div>
+      <a href="benchmarks.html">Benchmarks</a>
+      <div class="sb-foot">
+        <a href="https://github.com/dotnet-web-stack/Glyph11">GitHub ↗</a>
+        <a href="https://www.nuget.org/packages/Glyph11/">NuGet ↗</a>
+      </div>
+    </nav>
+  </aside>
+
+  <main class="main"><div class="content">
+    <span class="tag">pure managed</span>
+    <h1>Glyph11</h1>
+    <p class="lead">The hardened HTTP/1.1 request parser in pure C#. Dependency-free, AOT/trim-friendly, runs on
+    any .NET target. Full RFC 9110/9112 validation, configurable limits, and request-smuggling defenses in a
+    single zero-copy pass — into a reusable <code>BinaryRequest</code>.</p>
+
+    <h2 id="install">Install</h2>
+    <p class="install"><code>dotnet add package Glyph11</code></p>
+
+    <h2 id="quickstart">Quick start</h2>
+    <p>The primary entry point parses a <code>ReadOnlySequence&lt;byte&gt;</code> — what you get from a
+    <code>PipeReader</code> or socket, which may be split across several buffers.</p>
+<pre><code class="language-csharp">using System.Buffers;
+using System.Text;
+using Glyph11.Protocol;            // BinaryRequest
+using Glyph11.Parser;             // ParserLimits
+using Glyph11.Parser.UltraHardened; // UltraHardenedParser
+
+// BinaryRequest is reusable — allocate once, Clear() and reuse per request (see below).
+var request = new BinaryRequest();
+
+// ParserLimits is your security policy: header/URL sizes, counts. Default is a sane baseline.
+var limits = ParserLimits.Default;
+
+// The bytes to parse. In real code this is the buffer a PipeReader handed you.
+ReadOnlySequence&lt;byte&gt; buffer = new(Encoding.ASCII.GetBytes(
+    "GET /api/users?page=1&amp;sort=asc HTTP/1.1\r\n" +
+    "Host: example.com\r\n" +
+    "Accept: */*\r\n\r\n"));
+
+// Returns:
+//   true  → a complete, valid header block was parsed into `request`
+//   false → the buffer doesn't yet hold a full header block (read more, then retry)
+//   throws HttpParseException → the bytes are a complete but INVALID/malicious request
+if (UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in limits, out int bytesRead))
+{
+    // `request` is now populated. `bytesRead` marks the header block (see "Errors &amp; reuse").
+    Console.WriteLine(Encoding.ASCII.GetString(request.Method.Span)); // GET
+    Console.WriteLine(Encoding.ASCII.GetString(request.Path.Span));   // /api/users
+}</code></pre>
+
+    <h2 id="result">Reading the result</h2>
+    <p>Every field on <code>BinaryRequest</code> is a <code>ReadOnlyMemory&lt;byte&gt;</code> slice of your input
+    buffer — <b>zero-copy</b>. Decode to text only when you actually need a string.</p>
+<pre><code class="language-csharp">// --- the request line ---
+ReadOnlyMemory&lt;byte&gt; method  = request.Method;   // "GET"
+ReadOnlyMemory&lt;byte&gt; path    = request.Path;     // "/api/users"  (query stripped off)
+ReadOnlyMemory&lt;byte&gt; version = request.Version;  // "HTTP/1.1"
+
+// --- headers: a list of (name, value) byte-slice pairs, in order ---
+for (int i = 0; i &lt; request.Headers.Count; i++)
+{
+    // Each entry is a KeyValuePair&lt;ReadOnlyMemory&lt;byte&gt;, ReadOnlyMemory&lt;byte&gt;&gt;.
+    var (name, value) = request.Headers[i];
+    Console.WriteLine($"{Encoding.ASCII.GetString(name.Span)}: {Encoding.ASCII.GetString(value.Span)}");
+    // Host: example.com
+    // Accept: */*
+}
+
+// --- query parameters: parsed out of the request target ---
+for (int i = 0; i &lt; request.QueryParameters.Count; i++)
+{
+    var (key, val) = request.QueryParameters[i];
+    Console.WriteLine($"{Encoding.ASCII.GetString(key.Span)} = {Encoding.ASCII.GetString(val.Span)}");
+    // page = 1
+    // sort = asc
+}
+
+// Find a header by name without allocating strings — HTTP names compare case-insensitively (ASCII):
+static bool HeaderIs(ReadOnlyMemory&lt;byte&gt; name, ReadOnlySpan&lt;byte&gt; want)
+    =&gt; System.Text.Ascii.EqualsIgnoreCase(name.Span, want);
+
+ReadOnlyMemory&lt;byte&gt; host = default;
+for (int i = 0; i &lt; request.Headers.Count; i++)
+    if (HeaderIs(request.Headers[i].Key, "Host"u8)) { host = request.Headers[i].Value; break; }</code></pre>
+
+    <h2 id="contiguous">Contiguous fast path</h2>
+    <p>If your request is already in one contiguous buffer (a single <code>byte[]</code> /
+    <code>ReadOnlyMemory&lt;byte&gt;</code>), use <code>TryExtractFullHeaderROM</code> — it skips the
+    segment-walking machinery and parses in place.</p>
+<pre><code class="language-csharp">// A request you already have fully buffered as one block.
+ReadOnlyMemory&lt;byte&gt; rom = Encoding.ASCII.GetBytes(
+    "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
+
+// Same contract as above (true / false / throws), but for a single contiguous buffer.
+if (UltraHardenedParser.TryExtractFullHeaderROM(ref rom, request, in limits, out int read))
+{
+    // request.Method, request.Path, ...
+}</code></pre>
+    <div class="note"><b>Tip:</b> <code>TryExtractFullHeaderValidated</code> already takes the contiguous fast
+    path internally when its sequence is single-segment — so prefer it unless you specifically hold a
+    <code>ReadOnlyMemory&lt;byte&gt;</code> and want to skip the sequence wrapper.</div>
+
+    <h2 id="limits">Limits &amp; configuration</h2>
+    <p><code>ParserLimits</code> is a <code>readonly record struct</code> — derive a custom policy with a
+    <code>with</code> expression. A request that exceeds a limit is rejected (mapped to HTTP 431), never
+    allowed to overflow.</p>
+<pre><code class="language-csharp">// Start from the defaults and tighten/loosen specific knobs.
+var limits = ParserLimits.Default with
+{
+    MaxHeaderCount       = 64,        // reject requests with more than 64 headers
+    MaxHeaderValueLength = 4 * 1024,  // 4 KB max per header value
+    MaxUrlLength         = 2 * 1024,  // 2 KB max request target
+    MaxTotalHeaderBytes  = 16 * 1024, // 16 KB cap on the whole header block
+};
+
+// Available knobs (all int): MaxHeaderCount, MaxHeaderNameLength, MaxHeaderValueLength,
+// MaxUrlLength, MaxQueryParameterCount, MaxMethodLength, MaxTotalHeaderBytes.</code></pre>
+
+    <h2 id="pipereader">Reading from a PipeReader</h2>
+    <p>The real-world loop: read, try to parse, and if the buffer doesn't yet hold a full header block,
+    ask for more bytes and retry.</p>
+<pre><code class="language-csharp">async Task HandleAsync(PipeReader reader, ParserLimits limits, CancellationToken ct)
+{
+    var request = new BinaryRequest();
+    while (true)
+    {
+        ReadResult read = await reader.ReadAsync(ct);
+        ReadOnlySequence&lt;byte&gt; buffer = read.Buffer;
+
+        try
+        {
+            request.Clear(); // reset before each parse attempt
+            if (UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in limits, out int bytesRead))
+            {
+                // Got a full, valid request. The body starts right after the header block.
+                // `bytesRead` follows glyph11's -1 convention, so advance by bytesRead + 1:
+                SequencePosition bodyStart = read.Buffer.GetPosition(bytesRead + 1);
+                // ... dispatch `request`, then read/handle the body from bodyStart ...
+                reader.AdvanceTo(bodyStart);
+                return;
+            }
+
+            // Not enough bytes yet: mark everything examined so the next ReadAsync waits for more.
+            reader.AdvanceTo(buffer.Start, buffer.End);
+            if (read.IsCompleted) break; // connection closed mid-request
+        }
+        catch (HttpParseException)
+        {
+            // A complete but invalid/malicious request — respond 400/431 and close.
+            break;
+        }
+    }
+}</code></pre>
+
+    <h2 id="chunked">Chunked bodies</h2>
+    <p>After the headers, a <code>Transfer-Encoding: chunked</code> body is decoded with
+    <code>ChunkedBodyStream</code> — a small struct state machine you feed bytes to. It tells you where each
+    decoded chunk's payload sits, without copying.</p>
+<pre><code class="language-csharp">using Glyph11.Parser;
+
+var decoder = new ChunkedBodyStream();
+int offset = 0;
+var body = new ArrayBufferWriter&lt;byte&gt;();
+
+while (true)
+{
+    // Try to read the next chunk from the remaining input.
+    ChunkResult r = decoder.TryReadChunk(
+        input.AsSpan(offset),
+        out int consumed,     // bytes of input this call used (framing + payload)
+        out int dataOffset,   // where the decoded payload starts, relative to the slice
+        out int dataLength);  // how many payload bytes
+
+    switch (r)
+    {
+        case ChunkResult.Chunk:        // a payload chunk is ready
+            body.Write(input.AsSpan(offset + dataOffset, dataLength));
+            offset += consumed;
+            continue;
+        case ChunkResult.Completed:    // terminal 0-length chunk seen → body done
+            break;
+        case ChunkResult.NeedMoreData: // partial chunk — read more bytes, then call again
+            break;
+        case ChunkResult.Error:        // malformed chunk framing → reject the request
+            throw new InvalidOperationException("bad chunked encoding");
+    }
+    break;
+}
+// There is also a TryReadChunk(in ReadOnlySequence&lt;byte&gt;, out long, out ReadOnlySequence&lt;byte&gt;)
+// overload that decodes fragmented input without linearizing.</code></pre>
+
+    <h2 id="errors">Errors &amp; reuse</h2>
+    <ul>
+      <li><b><code>true</code></b> — a complete, valid header block was parsed.</li>
+      <li><b><code>false</code></b> — the buffer is incomplete; read more bytes and call again.</li>
+      <li><b><code>HttpParseException</code></b> — the bytes are a complete but invalid request (bad token,
+        smuggling vector, limit breach, …). Map to HTTP 400 / 431 and close the connection.</li>
+    </ul>
+    <div class="warn"><b><code>bytesRead</code> is the header length minus one</b> — a long-standing glyph11
+    convention. The body begins at <code>bytesRead + 1</code>; advance your reader by that.</div>
+    <p>Reuse the request to stay allocation-free across a connection: <code>request.Clear()</code> between
+    parses keeps the pooled header/query arrays; <code>request.Dispose()</code> returns them to the
+    <code>ArrayPool</code> when you're done with the connection.</p>
+<pre><code class="language-csharp">var request = new BinaryRequest();
+try
+{
+    // per request:
+    request.Clear();
+    // ... parse + handle ...
+}
+finally
+{
+    request.Dispose(); // returns pooled arrays; not disposing won't leak, just skips the pooling
+}</code></pre>
+
+    <div class="pager">
+      <a href="index.html">← Overview</a>
+      <a href="glyph11-native.html">Glyph11.Native →</a>
+    </div>
+    <footer class="docfoot">MIT licensed · <a href="https://github.com/dotnet-web-stack/Glyph11">github.com/dotnet-web-stack/Glyph11</a></footer>
+  </div></main>
+</div>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<script>if(window.hljs)document.querySelectorAll('pre code').forEach(b=>hljs.highlightElement(b));</script>
+</body>
+</html>

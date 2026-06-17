@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glyph11.Pico — Glyph11 docs</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<button class="menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="index.html">Glyph<b>11</b></a>
+    <nav>
+      <a href="index.html">Overview</a>
+      <div class="group">Packages</div>
+      <a href="glyph11.html">Glyph11</a>
+      <a href="glyph11-native.html">Glyph11.Native</a>
+      <a href="glyph11-pico.html" class="active">Glyph11.Pico</a>
+      <div class="group">On this page</div>
+      <a href="#install" class="sub">Install</a>
+      <a href="#quickstart" class="sub">Quick start</a>
+      <a href="#result" class="sub">Reading the result</a>
+      <a href="#sequence" class="sub">ReadOnlySequence</a>
+      <a href="#chunked" class="sub">Chunked bodies</a>
+      <a href="#tradeoff" class="sub">The trade-off</a>
+      <a href="#platforms" class="sub">Platforms</a>
+      <div class="group">Reference</div>
+      <a href="benchmarks.html">Benchmarks</a>
+      <div class="sb-foot">
+        <a href="https://github.com/dotnet-web-stack/Glyph11">GitHub ↗</a>
+        <a href="https://www.nuget.org/packages/Glyph11.Pico/">NuGet ↗</a>
+      </div>
+    </nav>
+  </aside>
+
+  <main class="main"><div class="content">
+    <span class="tag">native · fastest</span>
+    <h1>Glyph11.Pico</h1>
+    <p class="lead">The fastest path to a <code>BinaryRequest</code>.
+    <a href="https://github.com/h2o/picohttpparser">picohttpparser</a> (native, SSE4.2) tokenizes; a thin
+    managed layer fills the <b>same <code>BinaryRequest</code></b> as <a href="glyph11.html">Glyph11</a>. The
+    trade: <b>no validation beyond picohttpparser's</b> — raw speed, same request shape.</p>
+
+    <h2 id="install">Install</h2>
+    <p class="install"><code>dotnet add package Glyph11.Pico</code></p>
+    <p>Depends on <code>Glyph11</code> (for <code>BinaryRequest</code> and chunked decoding) and bundles the
+    native <code>libglyph11pico</code> per platform.</p>
+
+    <h2 id="quickstart">Quick start</h2>
+<pre><code class="language-csharp">using System.Text;
+using Glyph11.Pico;
+using Glyph11.Protocol; // BinaryRequest
+
+// Same reusable BinaryRequest as the managed parser — allocate once, Clear() per request.
+var request = new BinaryRequest();
+
+// Contiguous input (a byte[] / ReadOnlyMemory&lt;byte&gt; you already have buffered).
+byte[] input = "GET /api/users?page=1 HTTP/1.1\r\nHost: example.com\r\n\r\n"u8.ToArray();
+
+// Returns true on a parsed header block; false if malformed or incomplete.
+// `consumed` marks the header block (see "The trade-off" for the off-by-one note).
+if (PicoParser.TryParse(input, request, out int consumed))
+{
+    // Identical BinaryRequest to Glyph11 — Method / Path / Version / Headers / QueryParameters.
+    Console.WriteLine(Encoding.ASCII.GetString(request.Method.Span)); // GET
+    Console.WriteLine(Encoding.ASCII.GetString(request.Path.Span));   // /api/users
+}</code></pre>
+
+    <h2 id="result">Reading the result</h2>
+    <p>Because it fills the same <code>BinaryRequest</code>, reading is identical to
+    <a href="glyph11.html#result">Glyph11</a> — every field is a zero-copy
+    <code>ReadOnlyMemory&lt;byte&gt;</code> slice of your input.</p>
+<pre><code class="language-csharp">request.Method;          // "GET"
+request.Path;            // "/api/users"  (query stripped)
+request.Version;         // "HTTP/1.1"
+request.Body;            // remainder of the buffer after the header block
+
+for (int i = 0; i &lt; request.Headers.Count; i++)
+{
+    var (name, value) = request.Headers[i];  // KeyValuePair of byte slices
+    // ...
+}
+for (int i = 0; i &lt; request.QueryParameters.Count; i++)
+{
+    var (key, val) = request.QueryParameters[i];
+    // ...
+}</code></pre>
+    <p>The header capacity per parse is <code>PicoParser.MaxHeaders</code> (256); a request with more headers
+    is rejected (<code>false</code>).</p>
+
+    <h2 id="sequence">ReadOnlySequence input</h2>
+    <p>picohttpparser needs one contiguous buffer, so a fragmented sequence uses a dedicated overload:
+    single-segment is parsed in place (zero-copy); multi-segment is linearized into a fresh array, which the
+    resulting <code>BinaryRequest</code> slices keep alive (just like the managed parser — no buffer for you
+    to manage).</p>
+<pre><code class="language-csharp">// `sequence` is a ReadOnlySequence&lt;byte&gt; from a PipeReader, socket, etc.
+if (PicoParser.TryParse(sequence, request, out int consumed))
+{
+    // request.* exactly as in the contiguous case.
+}
+// Single-segment → zero-copy. Multi-segment → one ToArray() internally; the BinaryRequest
+// references that array, so it stays alive as long as you hold the request.</code></pre>
+
+    <h2 id="chunked">Chunked bodies</h2>
+    <p>Chunked decoding is glyph11's — this package depends on <code>Glyph11</code>, so use
+    <code>ChunkedBodyStream</code> directly (see <a href="glyph11.html#chunked">the Glyph11 page</a>).</p>
+<pre><code class="language-csharp">using Glyph11.Parser;
+
+var decoder = new ChunkedBodyStream();
+var r = decoder.TryReadChunk(input, out int consumed, out int dataOffset, out int dataLength);
+// r: Chunk | Completed | NeedMoreData | Error
+</code></pre>
+
+    <h2 id="tradeoff">The trade-off</h2>
+    <p>Glyph11.Pico does the <b>same parsing</b> as Glyph11, but only picohttpparser's validation. It does
+    <b>not</b> do glyph11's hardening:</p>
+    <table>
+      <thead><tr><th></th><th>Glyph11 / Glyph11.Native</th><th>Glyph11.Pico</th></tr></thead>
+      <tbody>
+        <tr><td>Method / path / version / headers / query</td><td>✅</td><td>✅ (same <code>BinaryRequest</code>)</td></tr>
+        <tr><td>Token / field-value character validation</td><td>✅</td><td>❌</td></tr>
+        <tr><td>Path normalization &amp; traversal checks</td><td>✅</td><td>❌</td></tr>
+        <tr><td>Host / limits / Transfer-Encoding+Content-Length conflict</td><td>✅</td><td>❌</td></tr>
+        <tr><td>Request-smuggling defenses</td><td>✅</td><td>❌</td></tr>
+      </tbody>
+    </table>
+    <div class="warn"><b>Use it when you validate elsewhere or trust the source.</b> For untrusted,
+    internet-facing input that you want hardened in the parser, use <a href="glyph11.html">Glyph11</a> or
+    <a href="glyph11-native.html">Glyph11.Native</a>.</div>
+    <p><code>consumed</code> follows glyph11's convention: it's the header-block length minus one, so the body
+    begins at <code>consumed + 1</code> — a drop-in match for the managed parser.</p>
+
+    <h2 id="platforms">Platforms &amp; native resolution</h2>
+    <p>Native <code>libglyph11pico</code> is bundled for <code>linux-x64/arm64</code>,
+    <code>win-x64/arm64</code>, and <code>osx-x64/arm64</code>, resolved automatically. The x86-64 builds use
+    picohttpparser's SSE4.2 fast path. Override with <code>GLYPH11_PICO_NATIVE_PATH</code> (an explicit path
+    to <code>libglyph11pico.{so,dll,dylib}</code>) for local builds.</p>
+
+    <div class="pager">
+      <a href="glyph11-native.html">← Glyph11.Native</a>
+      <a href="benchmarks.html">Benchmarks →</a>
+    </div>
+    <footer class="docfoot">MIT licensed · bundles picohttpparser (MIT/Perl) · <a href="https://github.com/dotnet-web-stack/Glyph11">github.com/dotnet-web-stack/Glyph11</a></footer>
+  </div></main>
+</div>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<script>if(window.hljs)document.querySelectorAll('pre code').forEach(b=>hljs.highlightElement(b));</script>
+</body>
+</html>
