@@ -264,14 +264,25 @@ var r = stream.TryReadChunk(input, out int consumed, out int dataOffset, out int
   <h2>Benchmarks</h2>
   <p class="sub"><code>linux-x64</code>, best-of-5, ns/op (lower is better). Native packages are the AVX2 / SSE4.2 builds. <span style="color:var(--best);font-weight:700">Green</span> = fastest per row.</p>
 
-  <h3 style="font-size:1.05rem;margin:.4rem 0 .2rem">Request header parsing</h3>
-  <p class="note" style="margin:0 0 .3rem">→ <code>BinaryRequest</code> for Glyph11 / Pico; raw field spans for Native.</p>
+  <h3 style="font-size:1.05rem;margin:.4rem 0 .2rem">Request header parsing — contiguous</h3>
+  <p class="note" style="margin:0 0 .3rem">Single buffer, parsed in place. → <code>BinaryRequest</code> for Glyph11 / Pico; raw field spans for Native.</p>
   <table>
     <thead><tr><th>Payload</th><th class="num">Glyph11</th><th class="num">Glyph11.Native</th><th class="num">Glyph11.Pico</th></tr></thead>
     <tbody>
-      <tr><td>~95 B</td><td class="num">116 ns</td><td class="num">99 ns</td><td class="num best">82 ns</td></tr>
-      <tr><td>4 KB</td><td class="num">733 ns</td><td class="num">523 ns</td><td class="num best">477 ns</td></tr>
-      <tr><td>32 KB</td><td class="num">5342 ns</td><td class="num">3757 ns</td><td class="num best">3379 ns</td></tr>
+      <tr><td>~95 B</td><td class="num">120 ns</td><td class="num">99 ns</td><td class="num best">80 ns</td></tr>
+      <tr><td>4 KB</td><td class="num">750 ns</td><td class="num">502 ns</td><td class="num best">487 ns</td></tr>
+      <tr><td>32 KB</td><td class="num">5251 ns</td><td class="num">3752 ns</td><td class="num best">3370 ns</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size:1.05rem;margin:1.3rem 0 .2rem">Request header parsing — multi-segment</h3>
+  <p class="note" style="margin:0 0 .3rem">Fragmented request (3 segments) linearized into a buffer per request, then parsed.</p>
+  <table>
+    <thead><tr><th>Payload</th><th class="num">Glyph11</th><th class="num">Glyph11.Native</th><th class="num">Glyph11.Pico</th></tr></thead>
+    <tbody>
+      <tr><td>~95 B</td><td class="num">245 ns</td><td class="num best">116 ns</td><td class="num">118 ns</td></tr>
+      <tr><td>4 KB</td><td class="num">1258 ns</td><td class="num">721 ns</td><td class="num best">674 ns</td></tr>
+      <tr><td>32 KB</td><td class="num">8695 ns</td><td class="num">4969 ns</td><td class="num best">4627 ns</td></tr>
     </tbody>
   </table>
 

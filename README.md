@@ -134,13 +134,21 @@ AVX2 / SSE4.2 native builds. The same tables and usage docs are at
 **<https://dotnet-web-stack.github.io/Glyph11/>**; the harnesses are in
 [`bench/`](bench).
 
-**Request header parsing** (→ `BinaryRequest` for Glyph11 / Pico; raw spans for Native):
+**Request header parsing** — contiguous buffer (→ `BinaryRequest` for Glyph11 / Pico; raw spans for Native):
 
 | Payload | Glyph11 | Glyph11.Native | Glyph11.Pico |
 |---|---:|---:|---:|
-| ~95 B   | 116 ns  | 99 ns   | **82 ns** |
-| 4 KB    | 733 ns  | 523 ns  | **477 ns** |
-| 32 KB   | 5342 ns | 3757 ns | **3379 ns** |
+| ~95 B   | 120 ns  | 99 ns   | **80 ns** |
+| 4 KB    | 750 ns  | 502 ns  | **487 ns** |
+| 32 KB   | 5251 ns | 3752 ns | **3370 ns** |
+
+**Multi-segment** — fragmented request (3 segments) linearized into a buffer per request, then parsed:
+
+| Payload | Glyph11 | Glyph11.Native | Glyph11.Pico |
+|---|---:|---:|---:|
+| ~95 B   | 245 ns  | **116 ns** | 118 ns |
+| 4 KB    | 1258 ns | 721 ns  | **674 ns** |
+| 32 KB   | 8695 ns | 4969 ns | **4627 ns** |
 
 **Chunked body decoding** (decoded size; `Glyph11.Pico` reuses `Glyph11`'s decoder):
 
