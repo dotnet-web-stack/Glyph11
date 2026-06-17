@@ -33,16 +33,19 @@ jobs:
             9.0
             10.0
 
+      # Pack only the Glyph11 package, not the whole src solution — the solution now also
+      # contains the binding projects (so the examples resolve in IDEs), and those publish
+      # via package-native.yml / package-pico.yml with their native binaries bundled.
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore Glyph11/Glyph11.csproj
         working-directory: src
 
-      - name: Build solution
-        run: dotnet build --configuration Release --no-restore
+      - name: Build
+        run: dotnet build Glyph11/Glyph11.csproj --configuration Release --no-restore
         working-directory: src
 
       - name: Pack
-        run: dotnet pack --configuration Release -p:ContinuousIntegrationBuild=true --no-build --output ./artifacts
+        run: dotnet pack Glyph11/Glyph11.csproj --configuration Release -p:ContinuousIntegrationBuild=true --no-build --output ./artifacts
         working-directory: src
 
       - name: List gathered packages
