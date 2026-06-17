@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable> <!-- a sample app — never publish it as a NuGet -->
+    <IsPublishable>false</IsPublishable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- In a real app this is: <PackageReference Include="Glyph11.Native" Version="0.1.0" />
+         which bundles the native libglyph11. Running this example in-repo needs the native
+         core on the load path — see Examples/README.md (set GLYPH11_NATIVE_PATH). -->
+    <ProjectReference Include="..\..\bindings\dotnet\Glyph11.Native\Glyph11.Native.csproj" />
+  </ItemGroup>
+
+</Project>

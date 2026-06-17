@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable> <!-- a sample app — never publish it as a NuGet -->
+    <IsPublishable>false</IsPublishable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- In a real app: <PackageReference Include="Glyph11.Pico" Version="0.0.1" /> (bundles
+         libglyph11pico and pulls in Glyph11). Running in-repo needs the native lib on the
+         load path — see Examples/README.md (set GLYPH11_PICO_NATIVE_PATH). -->
+    <ProjectReference Include="..\..\bindings\dotnet\Glyph11.Pico\Glyph11.Pico.csproj" />
+  </ItemGroup>
+
+</Project>

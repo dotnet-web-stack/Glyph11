@@ -11,6 +11,11 @@ on:
         description: Push the packed NuGet to NuGet.org
         type: boolean
         default: false
+  workflow_call:        # called by release.yml to publish alongside the other packages
+    inputs:
+      publish:
+        type: boolean
+        default: false
   push:
     tags:
       - 'pico-v*'
@@ -111,20 +116,23 @@ jobs:
 
       - name: Resolve package version
         id: ver
-        # pico-vX.Y.Z tag -> X.Y.Z (a release); otherwise a CI prerelease.
+        # tag pico-vX.Y.Z -> X.Y.Z; publish (dispatch/release call) -> the csproj <Version>;
+        # PR smoke test -> a throwaway CI prerelease.
         run: |
           ref='${{ github.ref }}'
           if [[ "$ref" == refs/tags/pico-v* ]]; then
-            echo "version=${ref#refs/tags/pico-v}" >> "$GITHUB_OUTPUT"
+            echo "args=-p:Version=${ref#refs/tags/pico-v}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ inputs.publish }}" == "true" ]]; then
+            echo "args=" >> "$GITHUB_OUTPUT"
           else
-            echo "version=0.0.1-ci.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            echo "args=-p:Version=0.0.1-ci.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Pack
         run: >
           dotnet pack bindings/dotnet/Glyph11.Pico/Glyph11.Pico.csproj
           -c Release -p:ContinuousIntegrationBuild=true
-          -p:Version=${{ steps.ver.outputs.version }}
+          ${{ steps.ver.outputs.args }}
           -o artifacts
 
       - name: Upload package
@@ -140,7 +148,7 @@ jobs:
     name: Publish to NuGet.org
     needs: pack
     # Only on a pico-v* tag, or an explicit dispatch with publish=true.
-    if: startsWith(github.ref, 'refs/tags/pico-v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    if: startsWith(github.ref, 'refs/tags/pico-v') || ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.publish)
     runs-on: ubuntu-latest
     environment:
       name: production
