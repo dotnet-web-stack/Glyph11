@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Glyph11.Protocol;
@@ -92,6 +93,21 @@ public static class PicoParser
 
         request.Body = input.Slice(ret);
         return true;
+    }
+
+    /// <summary>
+    /// Parse from a (possibly fragmented) <see cref="ReadOnlySequence{T}"/>. Single-segment
+    /// input is parsed in place (zero-copy); multi-segment input is linearized into a fresh
+    /// array first — picohttpparser needs one contiguous buffer — which the resulting
+    /// <see cref="BinaryRequest"/> slices reference (so it stays alive, like glyph11's managed
+    /// parser). Use the <see cref="ReadOnlyMemory{T}"/> overload when you already have a
+    /// contiguous buffer.
+    /// </summary>
+    public static bool TryParse(in ReadOnlySequence<byte> input, BinaryRequest request, out int consumed)
+    {
+        if (input.IsSingleSegment)
+            return TryParse(input.First, request, out consumed);
+        return TryParse((ReadOnlyMemory<byte>)input.ToArray(), request, out consumed);
     }
 
     // Minimal query split on '&' / '=' — no percent-decoding, no validation (just be fast).

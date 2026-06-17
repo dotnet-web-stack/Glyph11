@@ -85,6 +85,17 @@ if (status == Glyph11Parser.Ok)
 // status: 0 = OK, 1 = incomplete, otherwise a protocol/limit error (→ HTTP 400 / 431).
 ```
 
+A `ReadOnlySequence<byte>` overload handles fragmented input — single-segment is parsed in
+place (zero-copy), multi-segment is linearized into a caller-provided scratch (the C core
+needs one contiguous slab). `parsed` is the contiguous span the offsets index into:
+
+```csharp
+Span<byte> scratch = stackalloc byte[8192];           // sized to your max header block
+int status = Glyph11Parser.Parse(sequence, scratch, headers, query, limits,
+                                  out var r, out ReadOnlySpan<byte> parsed);
+// slice fields against `parsed` — the input's first segment, or `scratch`.
+```
+
 > **`linux-x64` requires AVX2** (Haswell / 2013+ — universal on modern servers): the SIMD
 > scanners inline into the parse loop for ~15% on large headers. Other RIDs use the portable
 > baseline.
@@ -111,6 +122,13 @@ if (PicoParser.TryParse(input, request, out int consumed))
 }
 ```
 
+A `ReadOnlySequence<byte>` overload is also available — single-segment zero-copy,
+multi-segment linearized into a fresh array (the `BinaryRequest` slices keep it alive):
+
+```csharp
+if (PicoParser.TryParse(sequence, request, out int consumed)) { /* request.* as usual */ }
+```
+
 Use it when you want the fastest path to a `BinaryRequest` and validate elsewhere (or trust
 the source). For the hardened parser, use `Glyph11`.
 
@@ -134,17 +152,25 @@ AVX2 / SSE4.2 native builds. The same tables and usage docs are at
 **<https://dotnet-web-stack.github.io/Glyph11/>**; the harnesses are in
 [`bench/`](bench).
 
-**Request header parsing** (→ `BinaryRequest` for Glyph11 / Pico; raw spans for Native):
+**Request header parsing** — contiguous buffer (→ `BinaryRequest` for Glyph11 / Pico; raw spans for Native):
 
 | Payload | Glyph11 | Glyph11.Native | Glyph11.Pico |
 |---|---:|---:|---:|
-| ~95 B   | 116 ns  | 99 ns   | **82 ns** |
-| 4 KB    | 733 ns  | 523 ns  | **477 ns** |
-| 32 KB   | 5342 ns | 3757 ns | **3379 ns** |
+| ~95 B   | 120 ns  | 99 ns   | **80 ns** |
+| 4 KB    | 750 ns  | 502 ns  | **487 ns** |
+| 32 KB   | 5251 ns | 3752 ns | **3370 ns** |
 
-**Chunked body decoding** (decoded size; `Glyph11.Pico` reuses `Glyph11`'s decoder):
+**Multi-segment** — fragmented request (3 segments) linearized into a buffer per request, then parsed:
 
-| Decoded | Glyph11 | Glyph11.Native |
+| Payload | Glyph11 | Glyph11.Native | Glyph11.Pico |
+|---|---:|---:|---:|
+| ~95 B   | 245 ns  | **116 ns** | 118 ns |
+| 4 KB    | 1258 ns | 721 ns  | **674 ns** |
+| 32 KB   | 8695 ns | 4969 ns | **4627 ns** |
+
+**Chunked body decoding** (decoded size; `Glyph11.Pico` reuses `Glyph11`'s `ChunkedBodyStream`, so they share a column):
+
+| Decoded | Glyph11 / Pico | Glyph11.Native |
 |---|---:|---:|
 | 256 B  | 19 ns  | 21 ns  |
 | 4 KB   | 115 ns | **70 ns** |
