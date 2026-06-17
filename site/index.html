@@ -251,7 +251,16 @@ if (PicoParser.TryParse(input, request, out int consumed))
 // picohttpparser-level validation only — no hardening. Validate elsewhere or trust the source.</code></pre>
   </div>
 
-  <p class="note" style="margin-top:.7rem">All three also accept a <code>ReadOnlySequence&lt;byte&gt;</code> overload — single-segment input is parsed in place (zero-copy); multi-segment is linearized first, since the native cores need one contiguous buffer. <code>Glyph11</code> takes the sequence directly; <code>Glyph11.Native</code> linearizes into a caller scratch buffer, <code>Glyph11.Pico</code> into a fresh array.</p>
+  <h3 style="font-size:1.1rem;margin:1.4rem 0 .3rem">Fragmented input — <code>ReadOnlySequence&lt;byte&gt;</code></h3>
+  <p class="sub" style="margin-bottom:.6rem">All three accept a sequence: single-segment is parsed in place (zero-copy); multi-segment is linearized first, since the native cores need one contiguous buffer. <code>Glyph11</code> takes it directly (its example above); the native packages:</p>
+<pre><code class="language-csharp">// Glyph11.Native — single-segment in place; multi-segment copies into your scratch.
+Span&lt;byte&gt; scratch = stackalloc byte[8192];            // sized to your max header block
+int status = Glyph11Parser.Parse(sequence, scratch, headers, query, limits,
+                                 out var r, out ReadOnlySpan&lt;byte&gt; parsed);
+// slice fields against `parsed` — the input's first segment, or `scratch`.
+
+// Glyph11.Pico — single-segment zero-copy; multi-segment linearized for you.
+if (PicoParser.TryParse(sequence, request, out int consumed)) { /* request.* as usual */ }</code></pre>
 
   <h3 style="font-size:1.1rem;margin:1.4rem 0 .3rem">Chunked bodies</h3>
   <p class="sub" style="margin-bottom:.6rem"><code>Glyph11</code> and <code>Glyph11.Pico</code> decode chunked transfer-encoding via <code>ChunkedBodyStream</code>; <code>Glyph11.Native</code> exposes the C decoder.</p>
@@ -289,9 +298,9 @@ var r = stream.TryReadChunk(input, out int consumed, out int dataOffset, out int
   </table>
 
   <h3 style="font-size:1.05rem;margin:1.3rem 0 .2rem">Chunked body decoding</h3>
-  <p class="note" style="margin:0 0 .3rem">Decoded size. <code>Glyph11.Pico</code> reuses <code>Glyph11</code>'s decoder (same numbers).</p>
+  <p class="note" style="margin:0 0 .3rem">Decoded size. <code>Glyph11.Pico</code> reuses <code>Glyph11</code>'s <code>ChunkedBodyStream</code>, so they share a column.</p>
   <table>
-    <thead><tr><th>Decoded</th><th class="num">Glyph11</th><th class="num">Glyph11.Native</th></tr></thead>
+    <thead><tr><th>Decoded</th><th class="num">Glyph11 / Pico</th><th class="num">Glyph11.Native</th></tr></thead>
     <tbody>
       <tr><td>256 B</td><td class="num best">19 ns</td><td class="num">21 ns</td></tr>
       <tr><td>4 KB</td><td class="num">115 ns</td><td class="num best">70 ns</td></tr>
