@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Benchmarks — Glyph11 docs</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<button class="menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="index.html">Glyph<b>11</b></a>
+    <nav>
+      <a href="index.html">Overview</a>
+      <div class="group">Packages</div>
+      <a href="glyph11.html">Glyph11</a>
+      <a href="glyph11-native.html">Glyph11.Native</a>
+      <a href="glyph11-pico.html">Glyph11.Pico</a>
+      <div class="group">Reference</div>
+      <a href="benchmarks.html" class="active">Benchmarks</a>
+      <div class="group">On this page</div>
+      <a href="#request" class="sub">Request (contiguous)</a>
+      <a href="#multiseg" class="sub">Multi-segment</a>
+      <a href="#chunked" class="sub">Chunked</a>
+      <a href="#method" class="sub">Methodology</a>
+      <div class="sb-foot">
+        <a href="https://github.com/dotnet-web-stack/Glyph11">GitHub ↗</a>
+        <a href="https://www.nuget.org/packages/Glyph11/">NuGet ↗</a>
+      </div>
+    </nav>
+  </aside>
+
+  <main class="main"><div class="content">
+    <span class="tag">linux-x64 · ns/op</span>
+    <h1>Benchmarks</h1>
+    <p class="lead">Best-of-5, ns/op (lower is better), on <code>linux-x64</code>. The native packages are the
+    AVX2 / SSE4.2 builds. <span style="color:var(--best);font-weight:700">Green</span> is the fastest per row.
+    All three reject malformed framing; they differ in how much they validate — see
+    <a href="glyph11-pico.html#tradeoff">the trade-off</a>.</p>
+
+    <h2 id="request">Request header parsing — contiguous</h2>
+    <p>Single buffer, parsed in place. → <code>BinaryRequest</code> for Glyph11 / Pico; raw field spans for Native.</p>
+    <table>
+      <thead><tr><th>Payload</th><th class="num">Glyph11</th><th class="num">Glyph11.Native</th><th class="num">Glyph11.Pico</th></tr></thead>
+      <tbody>
+        <tr><td>~95 B</td><td class="num">120 ns</td><td class="num">99 ns</td><td class="num best">80 ns</td></tr>
+        <tr><td>4 KB</td><td class="num">750 ns</td><td class="num">502 ns</td><td class="num best">487 ns</td></tr>
+        <tr><td>32 KB</td><td class="num">5251 ns</td><td class="num">3752 ns</td><td class="num best">3370 ns</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="multiseg">Request header parsing — multi-segment</h2>
+    <p>Fragmented request (3 segments) linearized into a buffer per request, then parsed.</p>
+    <table>
+      <thead><tr><th>Payload</th><th class="num">Glyph11</th><th class="num">Glyph11.Native</th><th class="num">Glyph11.Pico</th></tr></thead>
+      <tbody>
+        <tr><td>~95 B</td><td class="num">245 ns</td><td class="num best">116 ns</td><td class="num">118 ns</td></tr>
+        <tr><td>4 KB</td><td class="num">1258 ns</td><td class="num">721 ns</td><td class="num best">674 ns</td></tr>
+        <tr><td>32 KB</td><td class="num">8695 ns</td><td class="num">4969 ns</td><td class="num best">4627 ns</td></tr>
+      </tbody>
+    </table>
+    <p>Both native packages are ~2× the managed parser on fragmented input; Pico leads on large, Native on tiny.</p>
+
+    <h2 id="chunked">Chunked body decoding</h2>
+    <p>Decoded size. <code>Glyph11.Pico</code> reuses <code>Glyph11</code>'s <code>ChunkedBodyStream</code>, so they share a column.</p>
+    <table>
+      <thead><tr><th>Decoded</th><th class="num">Glyph11 / Pico</th><th class="num">Glyph11.Native</th></tr></thead>
+      <tbody>
+        <tr><td>256 B</td><td class="num best">19 ns</td><td class="num">21 ns</td></tr>
+        <tr><td>4 KB</td><td class="num">115 ns</td><td class="num best">70 ns</td></tr>
+        <tr><td>32 KB</td><td class="num">826 ns</td><td class="num best">808 ns</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="method">Methodology</h2>
+    <ul>
+      <li><b>Best-of-5</b> timed trials after warmup, on identical payloads, in one process.</li>
+      <li><b>Native builds:</b> <code>libglyph11</code> at <code>-march=x86-64-v3</code> (AVX2);
+        <code>libglyph11pico</code> with picohttpparser's SSE4.2 path.</li>
+      <li><b>Same output where comparable:</b> Glyph11 and Pico both build a full <code>BinaryRequest</code>
+        (path/query split, header list); Native fills raw <code>(offset,length)</code> spans.</li>
+      <li><b>Multi-segment</b> linearizes a fresh buffer per request (3 segments → one contiguous block),
+        then parses — the cost of fragmentation.</li>
+    </ul>
+    <p>The harnesses are in <a href="https://github.com/dotnet-web-stack/Glyph11/tree/main/bench"><code>bench/</code></a>.
+    Numbers vary run-to-run and by hardware; treat them as relative, not absolute.</p>
+
+    <div class="pager">
+      <a href="glyph11-pico.html">← Glyph11.Pico</a>
+      <span></span>
+    </div>
+    <footer class="docfoot">MIT licensed · <a href="https://github.com/dotnet-web-stack/Glyph11">github.com/dotnet-web-stack/Glyph11</a></footer>
+  </div></main>
+</div>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<script>if(window.hljs)document.querySelectorAll('pre code').forEach(b=>hljs.highlightElement(b));</script>
+</body>
+</html>

@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glyph11.Native — Glyph11 docs</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<button class="menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="index.html">Glyph<b>11</b></a>
+    <nav>
+      <a href="index.html">Overview</a>
+      <div class="group">Packages</div>
+      <a href="glyph11.html">Glyph11</a>
+      <a href="glyph11-native.html" class="active">Glyph11.Native</a>
+      <a href="glyph11-pico.html">Glyph11.Pico</a>
+      <div class="group">On this page</div>
+      <a href="#install" class="sub">Install</a>
+      <a href="#quickstart" class="sub">Quick start</a>
+      <a href="#storage" class="sub">Storage &amp; limits</a>
+      <a href="#fields" class="sub">Reading fields</a>
+      <a href="#sequence" class="sub">ReadOnlySequence</a>
+      <a href="#status" class="sub">Status codes</a>
+      <a href="#chunked" class="sub">Chunked decoding</a>
+      <a href="#platforms" class="sub">Platforms</a>
+      <div class="group">Reference</div>
+      <a href="benchmarks.html">Benchmarks</a>
+      <div class="sb-foot">
+        <a href="https://github.com/dotnet-web-stack/Glyph11">GitHub ↗</a>
+        <a href="https://www.nuget.org/packages/Glyph11.Native/">NuGet ↗</a>
+      </div>
+    </nav>
+  </aside>
+
+  <main class="main"><div class="content">
+    <span class="tag">native · P/Invoke</span>
+    <h1>Glyph11.Native</h1>
+    <p class="lead">The same hardened parser as <a href="glyph11.html">Glyph11</a>, running in the C core
+    (<code>libglyph11</code>) via P/Invoke. Native speed, <b>zero allocation</b> — you provide the field
+    storage and the parser writes byte-offset spans into it. Native binaries are bundled for six RIDs.</p>
+
+    <h2 id="install">Install</h2>
+    <p class="install"><code>dotnet add package Glyph11.Native</code></p>
+    <p>No native setup — the right <code>libglyph11</code> is bundled per platform and resolved automatically.</p>
+
+    <h2 id="quickstart">Quick start</h2>
+<pre><code class="language-csharp">using System.Text;
+using Glyph11.Native;
+
+byte[] request = Encoding.ASCII.GetBytes(
+    "GET /api/users?page=1 HTTP/1.1\r\nHost: example.com\r\nAccept: */*\r\n\r\n");
+
+// Your security policy. Default caps MaxHeaderCount at 100 (see "Storage &amp; limits").
+var limits = Glyph11Limits.Default;
+
+// Caller-provided storage the parser fills with (offset,length) spans — no allocation.
+// Size to the limits so any request the policy accepts fits (see the note below).
+Span&lt;Glyph11Field&gt; headers = stackalloc Glyph11Field[(int)limits.MaxHeaderCount];
+Span&lt;Glyph11Field&gt; query   = stackalloc Glyph11Field[(int)limits.MaxQueryParameterCount];
+
+// Returns a status int; `r` holds the request-line spans + counts.
+int status = Glyph11Parser.Parse(request, headers, query, limits, out Glyph11Result r);
+
+if (status == Glyph11Parser.Ok)            // 0 = OK
+{
+    // Fields are offsets into `request` — slice it to read them (see "Reading fields").
+    Console.WriteLine(Encoding.ASCII.GetString(request, (int)r.Path.Offset, (int)r.Path.Length)); // /api/users
+}</code></pre>
+
+    <h2 id="storage">Storage &amp; limits</h2>
+    <p><code>Glyph11Limits</code> mirrors the C policy (all <code>uint</code>): <code>MaxHeaderCount</code>,
+    <code>MaxHeaderNameLength</code>, <code>MaxHeaderValueLength</code>, <code>MaxUrlLength</code>,
+    <code>MaxQueryParameterCount</code>, <code>MaxMethodLength</code>, <code>MaxTotalHeaderBytes</code>.</p>
+<pre><code class="language-csharp">// Derive a custom policy (it's a struct — copy and set fields):
+var limits = Glyph11Limits.Default;
+limits.MaxHeaderCount      = 64;
+limits.MaxTotalHeaderBytes = 16 * 1024;</code></pre>
+    <div class="warn"><b>Size the arrays to your limits.</b> The parser bounds-checks every write — it never
+    overflows. But a <code>headers</code> array smaller than <code>MaxHeaderCount</code> silently lowers your
+    effective limit: once it fills, parsing stops with <code>TOO_MANY_HEADERS</code>. For large limits, rent
+    from <code>ArrayPool&lt;Glyph11Field&gt;</code> instead of <code>stackalloc</code>.</div>
+<pre><code class="language-csharp">// Large limits → pool instead of stackalloc:
+Glyph11Field[] headers = ArrayPool&lt;Glyph11Field&gt;.Shared.Rent((int)limits.MaxHeaderCount);
+try
+{
+    int status = Glyph11Parser.Parse(request, headers, query, limits, out var r);
+    // ...
+}
+finally { ArrayPool&lt;Glyph11Field&gt;.Shared.Return(headers); }</code></pre>
+
+    <h2 id="fields">Reading fields</h2>
+    <p>The output is <b>offset-based</b>: <code>Glyph11Result</code> and each <code>Glyph11Field</code> hold
+    <code>Glyph11Span</code> values (<code>Offset</code> + <code>Length</code>, <code>uint</code>) that index
+    into the buffer you passed. Nothing is copied; slice the buffer to read.</p>
+<pre><code class="language-csharp">// A tiny helper to turn a span into a string against the input buffer.
+string Slice(Glyph11Span s) =&gt; Encoding.ASCII.GetString(request, (int)s.Offset, (int)s.Length);
+
+// --- request line (Glyph11Result) ---
+Slice(r.Method);   // GET
+Slice(r.Target);   // /api/users?page=1   (full request target, as received)
+Slice(r.Path);     // /api/users          (query stripped)
+Slice(r.Version);  // HTTP/1.1
+long bodyOffset = r.Consumed; // where the body begins (bytes consumed by the header block)
+
+// --- headers: read r.HeaderCount entries from the array you passed ---
+for (int i = 0; i &lt; r.HeaderCount; i++)
+    Console.WriteLine($"{Slice(headers[i].Name)}: {Slice(headers[i].Value)}");
+
+// --- query parameters: r.QueryCount entries ---
+for (int i = 0; i &lt; r.QueryCount; i++)
+    Console.WriteLine($"{Slice(query[i].Name)} = {Slice(query[i].Value)}");</code></pre>
+    <div class="note"><b>Lifetime:</b> the offsets are valid only while the input buffer is alive and
+    unmodified. Read (or copy out) the fields you need before reusing the buffer for the next request.</div>
+
+    <h2 id="sequence">ReadOnlySequence input</h2>
+    <p>The C core needs one contiguous buffer, so a fragmented <code>ReadOnlySequence&lt;byte&gt;</code> uses a
+    dedicated overload: single-segment is parsed in place (zero-copy); multi-segment is linearized into a
+    <b>scratch buffer you provide</b> (keeping the package's zero-allocation contract). The <code>out
+    parsed</code> span tells you which buffer the offsets index into.</p>
+<pre><code class="language-csharp">// `scratch` only needs to hold a request when the input is fragmented; size it to your
+// MaxTotalHeaderBytes. Single-segment input leaves it untouched.
+Span&lt;byte&gt; scratch = stackalloc byte[16 * 1024];
+
+int status = Glyph11Parser.Parse(
+    sequence, scratch, headers, query, limits,
+    out Glyph11Result r,
+    out ReadOnlySpan&lt;byte&gt; parsed); // ← the contiguous bytes the offsets index into
+
+if (status == Glyph11Parser.Ok)
+{
+    // Slice against `parsed` (NOT the original sequence): it is either the input's first
+    // segment (single-segment) or `scratch` (multi-segment).
+    var method = parsed.Slice((int)r.Method.Offset, (int)r.Method.Length);
+    var path   = parsed.Slice((int)r.Path.Offset,   (int)r.Path.Length);
+}
+// Don't overwrite `scratch` while still reading fields from a multi-segment parse.</code></pre>
+
+    <h2 id="status">Status codes</h2>
+<pre><code class="language-csharp">int status = Glyph11Parser.Parse(request, headers, query, limits, out var r);
+
+if (status == Glyph11Parser.Ok)          { /* 0 — valid request parsed */ }
+else if (status == Glyph11Parser.Incomplete) { /* 1 — need more bytes, read &amp; retry */ }
+else
+{
+    // Any other value is a protocol/limit error. Map it to an HTTP response code:
+    int http = Glyph11Parser.HttpCode(status); // 400 (malformed) or 431 (limit exceeded)
+}
+
+// Sanity-check the loaded native library at startup if you like:
+uint abi = Glyph11Parser.AbiVersion();   // packed major.minor.patch of libglyph11</code></pre>
+
+    <h2 id="chunked">Chunked decoding</h2>
+    <p>The C core's streaming chunked decoder strips the framing and writes the decoded body into an output
+    buffer you own. Feed it each network read — a chunk's payload may span calls; the decoder carries the
+    partial state.</p>
+<pre><code class="language-csharp">// One decoder per body. Init zeroes it (the struct is the whole state — no allocation).
+Glyph11Chunked.Init(out Glyph11ChunkDecoder decoder);
+
+Span&lt;byte&gt; output = stackalloc byte[64 * 1024]; // your drain buffer
+
+Glyph11ChunkResult r = Glyph11Chunked.Decode(
+    ref decoder,
+    input,                 // a chunk-encoded network read
+    output,                // decoded body bytes are written here
+    out int inConsumed,    // input bytes consumed this call
+    out int outWritten);   // decoded bytes written to `output`
+
+switch (r)
+{
+    case Glyph11ChunkResult.Ok:    break; // input exhausted or output full — advance, drain, call again
+    case Glyph11ChunkResult.Done:  break; // terminal chunk seen — body complete
+    case Glyph11ChunkResult.Error: break; // malformed framing — reject the request
+}</code></pre>
+
+    <h2 id="platforms">Platforms &amp; native resolution</h2>
+    <p>Bundled native binaries (resolved automatically from <code>runtimes/&lt;rid&gt;/native/</code>):</p>
+    <table>
+      <thead><tr><th>OS</th><th>RIDs</th></tr></thead>
+      <tbody>
+        <tr><td>Linux</td><td><code>linux-x64</code>, <code>linux-arm64</code></td></tr>
+        <tr><td>Windows</td><td><code>win-x64</code>, <code>win-arm64</code></td></tr>
+        <tr><td>macOS</td><td><code>osx-x64</code>, <code>osx-arm64</code></td></tr>
+      </tbody>
+    </table>
+    <div class="warn"><b><code>linux-x64</code> requires AVX2</b> (Haswell / 2013+ — universal on modern
+    servers and cloud): the SIMD scanners inline into the parse loop for ~15% on large headers. Other RIDs
+    use the portable baseline.</div>
+    <p>To point at a hand-built core (tests, local builds), set <code>GLYPH11_NATIVE_PATH</code> to an explicit
+    path to <code>libglyph11.{so,dll,dylib}</code>; otherwise the bundled binary is used.</p>
+
+    <div class="pager">
+      <a href="glyph11.html">← Glyph11</a>
+      <a href="glyph11-pico.html">Glyph11.Pico →</a>
+    </div>
+    <footer class="docfoot">MIT licensed · <a href="https://github.com/dotnet-web-stack/Glyph11">github.com/dotnet-web-stack/Glyph11</a></footer>
+  </div></main>
+</div>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<script>if(window.hljs)document.querySelectorAll('pre code').forEach(b=>hljs.highlightElement(b));</script>
+</body>
+</html>
