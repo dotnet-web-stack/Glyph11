@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -106,6 +107,40 @@ public static class Glyph11Parser
     public static int Parse(ReadOnlySpan<byte> input, Span<Glyph11Field> headers,
                             Span<Glyph11Field> query, out Glyph11Result result)
         => Parse(input, headers, query, Glyph11Limits.Default, out result);
+
+    /// <summary>
+    /// Parse from a (possibly fragmented) <see cref="ReadOnlySequence{T}"/>. Single-segment
+    /// input is parsed in place (zero-copy); multi-segment input is first linearized into
+    /// <paramref name="scratch"/> — the C core needs one contiguous buffer. The result's
+    /// offsets index into <paramref name="parsed"/> (the input's first segment, or
+    /// <paramref name="scratch"/>); use it as the base when slicing fields.
+    /// <para><paramref name="scratch"/> must hold at least <c>input.Length</c> bytes when the
+    /// input is multi-segment (rent from <see cref="ArrayPool{T}"/>, or size it to your
+    /// <c>MaxTotalHeaderBytes</c> limit); it is untouched for single-segment input.</para>
+    /// </summary>
+    public static int Parse(in ReadOnlySequence<byte> input, Span<byte> scratch,
+                            Span<Glyph11Field> headers, Span<Glyph11Field> query,
+                            Glyph11Limits limits, out Glyph11Result result,
+                            out ReadOnlySpan<byte> parsed)
+    {
+        if (input.IsSingleSegment)
+        {
+            parsed = input.FirstSpan;
+        }
+        else
+        {
+            int len = checked((int)input.Length);
+            input.CopyTo(scratch);          // throws if scratch is smaller than the request
+            parsed = scratch.Slice(0, len);
+        }
+        return Parse(parsed, headers, query, limits, out result);
+    }
+
+    /// <summary>Parse a <see cref="ReadOnlySequence{T}"/> with the default resource limits.</summary>
+    public static int Parse(in ReadOnlySequence<byte> input, Span<byte> scratch,
+                            Span<Glyph11Field> headers, Span<Glyph11Field> query,
+                            out Glyph11Result result, out ReadOnlySpan<byte> parsed)
+        => Parse(input, scratch, headers, query, Glyph11Limits.Default, out result, out parsed);
 
     /// <summary>HTTP response code for a status (400 / 431, or 0 for OK / incomplete).</summary>
     public static int HttpCode(int status) => glyph11_status_http_code(status);

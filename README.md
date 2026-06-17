@@ -85,6 +85,11 @@ if (status == Glyph11Parser.Ok)
 // status: 0 = OK, 1 = incomplete, otherwise a protocol/limit error (→ HTTP 400 / 431).
 ```
 
+A `ReadOnlySequence<byte>` overload handles fragmented input: single-segment is parsed in
+place (zero-copy), multi-segment is linearized into a caller-provided scratch buffer (the C
+core needs one contiguous slab). It returns the contiguous span the result's offsets index
+into.
+
 > **`linux-x64` requires AVX2** (Haswell / 2013+ — universal on modern servers): the SIMD
 > scanners inline into the parse loop for ~15% on large headers. Other RIDs use the portable
 > baseline.
@@ -110,6 +115,9 @@ if (PicoParser.TryParse(input, request, out int consumed))
     // request.Version / .Headers / .QueryParameters — same shape as Glyph11.
 }
 ```
+
+A `ReadOnlySequence<byte>` overload is also available — single-segment is zero-copy,
+multi-segment is linearized into a fresh array (the `BinaryRequest` slices keep it alive).
 
 Use it when you want the fastest path to a `BinaryRequest` and validate elsewhere (or trust
 the source). For the hardened parser, use `Glyph11`.

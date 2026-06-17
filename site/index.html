@@ -251,6 +251,8 @@ if (PicoParser.TryParse(input, request, out int consumed))
 // picohttpparser-level validation only — no hardening. Validate elsewhere or trust the source.</code></pre>
   </div>
 
+  <p class="note" style="margin-top:.7rem">All three also accept a <code>ReadOnlySequence&lt;byte&gt;</code> overload — single-segment input is parsed in place (zero-copy); multi-segment is linearized first, since the native cores need one contiguous buffer. <code>Glyph11</code> takes the sequence directly; <code>Glyph11.Native</code> linearizes into a caller scratch buffer, <code>Glyph11.Pico</code> into a fresh array.</p>
+
   <h3 style="font-size:1.1rem;margin:1.4rem 0 .3rem">Chunked bodies</h3>
   <p class="sub" style="margin-bottom:.6rem"><code>Glyph11</code> and <code>Glyph11.Pico</code> decode chunked transfer-encoding via <code>ChunkedBodyStream</code>; <code>Glyph11.Native</code> exposes the C decoder.</p>
 <pre><code class="language-csharp">using Glyph11.Parser;
