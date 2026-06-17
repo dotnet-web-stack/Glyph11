@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Glyph11.Protocol;
 
 namespace Glyph11.Pico;
@@ -29,6 +31,7 @@ public static class PicoParser
     /// incomplete header block. On success <paramref name="consumed"/> is the header-block
     /// length and <c>request.Body</c> is the remainder of the buffer.
     /// </summary>
+    [SkipLocalsInit] // the scratch header array is written by the native call, not read uninitialized
     public static unsafe bool TryParse(ReadOnlyMemory<byte> input, BinaryRequest request, out int consumed)
     {
         request.Clear();
@@ -40,10 +43,20 @@ public static class PicoParser
         Span<PicoField> headers = stackalloc PicoField[MaxHeaders];
         nuint count = MaxHeaders;
         int ret;
-        using (var handle = input.Pin())
+        fixed (PicoField* hp = headers)
         {
-            fixed (PicoField* hp = headers)
+            // Cheap pin: `fixed` on the backing array, not Memory.Pin() (a pinned GCHandle
+            // costs tens of ns — dominant on small requests). Fall back to Pin() for the
+            // rare non-array-backed memory.
+            if (MemoryMarshal.TryGetArray(input, out ArraySegment<byte> seg))
             {
+                fixed (byte* basePtr = seg.Array)
+                    ret = PicoNative.pico_parse_request(basePtr + seg.Offset, (nuint)input.Length,
+                        &method, &target, &minor, hp, &count);
+            }
+            else
+            {
+                using var handle = input.Pin();
                 ret = PicoNative.pico_parse_request((byte*)handle.Pointer, (nuint)input.Length,
                     &method, &target, &minor, hp, &count);
             }
