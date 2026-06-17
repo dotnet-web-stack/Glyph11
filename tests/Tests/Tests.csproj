@@ -20,7 +20,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\src\Examples\GenHTTP\GenHTTP.csproj" />
+      <ProjectReference Include="..\GenHTTP\GenHTTP.csproj" />
       <ProjectReference Include="..\..\src\Glyph11\Glyph11.csproj" />
     </ItemGroup>
 
