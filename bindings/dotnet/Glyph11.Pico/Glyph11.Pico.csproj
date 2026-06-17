@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <RootNamespace>Glyph11.Pico</RootNamespace>
+
+        <!-- NuGet: the picohttpparser-backed fast parser. Produces the same BinaryRequest
+             shape as Glyph11 (which it depends on for the type + chunked decoding), but
+             skips glyph11's hardening — picohttpparser's validation only. -->
+        <PackageId>Glyph11.Pico</PackageId>
+        <Version>0.1.0</Version>
+        <AssemblyVersion>0.1.0.0</AssemblyVersion>
+        <FileVersion>0.1.0.0</FileVersion>
+        <Description>A fast HTTP/1.x request parser: picohttpparser (native, SSE4.2) tokenizes, then fills the same BinaryRequest glyph11 returns. No extra compliance checks beyond picohttpparser's — built for speed. Chunked decoding reuses glyph11's ChunkedBodyStream.</Description>
+        <PackageTags>HTTP Parser picohttpparser Native FFI Fast</PackageTags>
+
+        <PackageProjectUrl>https://github.com/MDA2AV/Glyph11</PackageProjectUrl>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <RepositoryType>git</RepositoryType>
+        <RepositoryUrl>https://github.com/MDA2AV/Glyph11</RepositoryUrl>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <Deterministic>true</Deterministic>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- BinaryRequest / KeyValueList / ChunkedBodyStream come from the managed parser. -->
+        <ProjectReference Include="..\..\..\src\Glyph11\Glyph11.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="/" />
+        <!-- Native libglyph11pico per RID, staged by CI before pack (see Glyph11.Native). -->
+        <None Include="runtimes/**" Pack="true" PackagePath="runtimes/%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
+
+</Project>

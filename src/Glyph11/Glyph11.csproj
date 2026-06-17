@@ -28,4 +28,9 @@
 
     </PropertyGroup>
 
+    <ItemGroup>
+        <!-- The pico-backed parser populates BinaryRequest/KeyValueList internals. -->
+        <InternalsVisibleTo Include="Glyph11.Pico" />
+    </ItemGroup>
+
 </Project>

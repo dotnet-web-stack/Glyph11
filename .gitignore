@@ -7,6 +7,10 @@
 # package-native CI matrix, never committed).
 bindings/dotnet/Glyph11.Native/runtimes/
 
+# Glyph11.Pico native build + staged binaries (CMake build dir, per-RID staging).
+bindings/dotnet/Glyph11.Pico/native/build/
+bindings/dotnet/Glyph11.Pico/runtimes/
+
 # User-specific files
 *.rsuser
 *.suo
