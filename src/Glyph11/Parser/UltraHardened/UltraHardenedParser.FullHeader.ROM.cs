@@ -4,7 +4,7 @@ using Glyph11.Protocol;
 namespace Glyph11.Parser.UltraHardened;
 
 /// <summary>
-/// 
+///
 /// </summary>
 public static partial class UltraHardenedParser
 {
@@ -96,7 +96,7 @@ public static partial class UltraHardenedParser
         // --- Version ---
         var versionSpan = requestLine[(secondSpace + 1)..];
         if (!ParserConstants.IsValidHttpVersion(versionSpan))
-            throw new HttpParseException("Invalid HTTP version.");
+            throw new HttpParseException("Invalid HTTP version.", 505);
 
         request.Version = input.Slice(secondSpace + 1, versionSpan.Length);
 
