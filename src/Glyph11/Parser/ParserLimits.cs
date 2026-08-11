@@ -27,6 +27,12 @@ public readonly record struct ParserLimits
     /// <summary>Maximum length of the HTTP method token in bytes (default 16).</summary>
     public int MaxMethodLength { get; init; }
 
+    /// <summary>
+    /// Maximum length of a response's reason phrase in bytes (default 512). Responses only; a
+    /// request has no equivalent field.
+    /// </summary>
+    public int MaxReasonPhraseLength { get; init; }
+
     /// <summary>Maximum total size of the header block including request line and terminators (default 1048576).</summary>
     public int MaxTotalHeaderBytes { get; init; }
 
@@ -39,6 +45,7 @@ public readonly record struct ParserLimits
         MaxUrlLength = 8192,
         MaxQueryParameterCount = 128,
         MaxMethodLength = 16,
+        MaxReasonPhraseLength = 512,
         MaxTotalHeaderBytes = 1_048_576
     };
 }

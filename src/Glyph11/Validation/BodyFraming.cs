@@ -15,6 +15,13 @@ public enum BodyFraming : byte
 
     /// <summary>Chunked transfer-encoding — use <see cref="ChunkedBodyStream"/>.</summary>
     Chunked,
+
+    /// <summary>
+    /// Responses only: the body runs until the peer closes the connection (RFC 9112 §6.3). A
+    /// request can never be framed this way — a client that closed its send side to delimit a body
+    /// would have no way left to read the answer.
+    /// </summary>
+    UntilClose,
 }
 
 /// <summary>
@@ -46,4 +53,7 @@ public readonly struct BodyFramingResult
 
     /// <summary>Chunked transfer-encoding.</summary>
     public static BodyFramingResult ForChunked => new(BodyFraming.Chunked, 0);
+
+    /// <summary>Body delimited by connection close — responses only.</summary>
+    public static BodyFramingResult ForUntilClose => new(BodyFraming.UntilClose, 0);
 }
