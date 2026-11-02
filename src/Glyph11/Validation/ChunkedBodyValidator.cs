@@ -46,6 +46,11 @@ public static class ChunkedBodyValidator
                     throw new HttpParseException("Chunk size overflow.");
 
                 chunkSize = (chunkSize << 4) | (uint)HexVal(body[pos]);
+
+                // A 16th digit can set the sign bit: sizes of 2^63 or more do not fit a long.
+                if (chunkSize < 0)
+                    throw new HttpParseException("Chunk size overflow.");
+
                 digitCount++;
                 pos++;
             }
@@ -151,7 +156,9 @@ public static class ChunkedBodyValidator
             }
 
             // --- Read chunk data (exactly chunkSize bytes) ---
-            if (pos + chunkSize > body.Length)
+            // Compared against what is left rather than as pos + chunkSize, which overflows for
+            // sizes near long.MaxValue.
+            if (chunkSize > body.Length - pos)
                 return false; // incomplete
 
             // Check for NUL-spill: data claims to extend beyond what was sent
