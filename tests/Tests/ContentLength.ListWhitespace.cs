@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Text;
 using Glyph11.Parser;
+using Glyph11.Parser.FlexibleParser;
 using Glyph11.Parser.UltraHardened;
 using Glyph11.Protocol;
 using Glyph11.Utils;
@@ -70,6 +71,21 @@ public class ContentLengthListWhitespaceTests : IDisposable
         var framing = BodyFramingDetector.DetectResponseBodyFraming(_response, "GET"u8);
         Assert.Equal(BodyFraming.ContentLength, framing.Framing);
         Assert.Equal(5, framing.ContentLength);
+    }
+
+    [Theory]
+    [InlineData(",")]
+    [InlineData(" ,")]
+    [InlineData("\t, ,")]
+    public void Request_ListWithoutAnElement_StatesNoLength(string value)
+    {
+        // The hardened parser refuses such a field; FlexibleParser passes it to the helpers, whose
+        // trim must stop at an element that is all whitespace.
+        ReadOnlyMemory<byte> rom = Encoding.ASCII.GetBytes($"POST / HTTP/1.1\r\nHost: x\r\nContent-Length: {value}\r\n\r\n");
+        Assert.True(FlexibleParser.TryExtractFullHeaderReadOnlyMemory(ref rom, _request, out _));
+
+        Assert.Equal(BodyFraming.None, BodyFramingDetector.DetectBodyFraming(_request).Framing);
+        Assert.Equal(-1, ContentLengthBodyReader.ParseContentLength(_request));
     }
 
     // ================================================================
