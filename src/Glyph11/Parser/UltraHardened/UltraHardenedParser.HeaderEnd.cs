@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Runtime.CompilerServices;
 
 namespace Glyph11.Parser.UltraHardened;
 
@@ -7,8 +8,9 @@ public static partial class UltraHardenedParser
     // =====================================================================
     //  Locating the end of the header section — RFC 9112 §2.2
     //
-    //  The hot path is a CRLFCRLF search and nothing else. Everything here runs only when that
-    //  search fails, or when the caller opted into bare-LF messages (ParserLimits.AllowBareLf).
+    //  The hot path is a CRLFCRLF search and nothing else (TryLocateHeaderSection for the
+    //  single-buffer parsers). Everything else here runs only when that search fails, or when the
+    //  caller opted into bare-LF messages (ParserLimits.AllowBareLf).
     //
     //  Two rules:
     //    - A message is never reported incomplete because of a bare LF. "Incomplete" asks the
@@ -24,6 +26,49 @@ public static partial class UltraHardenedParser
 
     private const string BareLfMessage = "Bare LF detected; only CRLF line endings are allowed.";
     private const string MixedLineEndingsMessage = "Mixed CRLF and bare LF line endings.";
+
+    /// <summary>
+    /// The header section of a single-buffer message, shared by the request and response parsers:
+    /// its length including the terminating empty line, and the line terminator it uses. Returns
+    /// <c>false</c> if more bytes are needed.
+    /// </summary>
+    /// <param name="span">The bytes received so far.</param>
+    /// <param name="limits">The caller's limits: <see cref="ParserLimits.AllowBareLf"/> and
+    /// <see cref="ParserLimits.MaxTotalHeaderBytes"/>.</param>
+    /// <param name="totalHeaderBytes">Bytes up to and including the terminating empty line.</param>
+    /// <param name="eol">CRLF, or LF for a bare-LF message the caller allowed.</param>
+    /// <exception cref="HttpParseException">
+    /// The bytes so far can never form a valid header section, or the section exceeds
+    /// <see cref="ParserLimits.MaxTotalHeaderBytes"/> (status 431).
+    /// </exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryLocateHeaderSection(
+        ReadOnlySpan<byte> span, in ParserLimits limits, out int totalHeaderBytes, out ReadOnlySpan<byte> eol)
+    {
+        int headerEnd = span.IndexOf(ParserConstants.CrlfCrlf);
+
+        // ---- No CRLFCRLF yet, or bare LF allowed: off the hot path ----
+        bool bareLf = false;
+        if (headerEnd < 0 || limits.AllowBareLf)
+        {
+            headerEnd = LocateHeaderEnd(span, headerEnd, limits.AllowBareLf, out bareLf);
+            if (headerEnd < 0)
+            {
+                totalHeaderBytes = 0;
+                eol = default;
+                return false;
+            }
+        }
+
+        // A bare-LF message ends in LFLF and splits its lines on LF; every other one, CRLF.
+        eol = bareLf ? Lf : ParserConstants.Crlf;
+
+        totalHeaderBytes = headerEnd + 2 * eol.Length;
+        if (totalHeaderBytes > limits.MaxTotalHeaderBytes)
+            throw new HttpParseException("Total header size exceeds limit.", statusCode: 431);
+
+        return true;
+    }
 
     /// <summary>
     /// Header-section end for the single-buffer parsers, called when no CRLFCRLF was found or bare

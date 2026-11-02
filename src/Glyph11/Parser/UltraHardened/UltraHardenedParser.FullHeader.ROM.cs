@@ -33,22 +33,9 @@ public static partial class UltraHardenedParser
         bytesReadCount = -1;
         var span = input.Span;
 
-        int headerEnd = span.IndexOf(ParserConstants.CrlfCrlf);
-
-        // ---- No CRLFCRLF yet, or bare LF allowed: off the hot path — RFC 9112 §2.2 ----
-        bool bareLf = false;
-        if (headerEnd < 0 || limits.AllowBareLf)
-        {
-            headerEnd = LocateHeaderEnd(span, headerEnd, limits.AllowBareLf, out bareLf);
-            if (headerEnd < 0) return false;
-        }
-
-        // A bare-LF message ends in LFLF and splits its lines on LF; every other one, CRLF.
-        ReadOnlySpan<byte> eol = bareLf ? Lf : ParserConstants.Crlf;
-
-        int totalHeaderBytes = headerEnd + 2 * eol.Length;
-        if (totalHeaderBytes > limits.MaxTotalHeaderBytes)
-            throw new HttpParseException("Total header size exceeds limit.", statusCode: 431);
+        // ---- End of the header section, its line terminator, its size — RFC 9112 §2.2 ----
+        if (!TryLocateHeaderSection(span, limits, out int totalHeaderBytes, out ReadOnlySpan<byte> eol))
+            return false;
 
         // ---- Request line: METHOD SP URL SP VERSION CRLF ----
 
