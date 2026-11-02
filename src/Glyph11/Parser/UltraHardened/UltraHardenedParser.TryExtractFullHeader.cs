@@ -9,8 +9,9 @@ public static partial class UltraHardenedParser
     /// Entry point: combined parse + semantic validation with full security checks.
     /// <para>
     /// Single-segment input is dispatched to the zero-copy validated ROM path.
-    /// Multi-segment input is checked for completeness (<c>\r\n\r\n</c>), then linearized
-    /// via <c>ToArray()</c> and parsed through the validated ROM path.
+    /// Multi-segment input is checked for completeness (<c>\r\n\r\n</c>) and against
+    /// <see cref="ParserLimits.MaxTotalHeaderBytes"/>, then its header block alone is linearized
+    /// (a pipelined body is never copied) and parsed through the validated ROM path.
     /// </para>
     /// </summary>
     /// <param name="input">Input buffer from the network layer.</param>
@@ -37,8 +38,12 @@ public static partial class UltraHardenedParser
             return false;
         }
 
-        // Linearize: copy all segments into a single contiguous array, then parse via ROM
-        ReadOnlyMemory<byte> mem = input.ToArray();
+        // Linearize the header block only — never the pipelined body behind it — and only once it
+        // is known to fit: reader.Consumed is the block's length, CRLFCRLF included.
+        if (reader.Consumed > limits.MaxTotalHeaderBytes)
+            throw new HttpParseException("Total header size exceeds limit.", statusCode: 431);
+
+        ReadOnlyMemory<byte> mem = input.Slice(0, reader.Consumed).ToArray();
         return TryExtractFullHeaderROM(ref mem, request, in limits, out bytesReadCount);
     }
 }
