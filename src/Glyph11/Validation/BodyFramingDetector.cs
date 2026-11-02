@@ -26,25 +26,7 @@ public static class BodyFramingDetector
     /// </exception>
     public static BodyFramingResult DetectBodyFraming(BinaryRequest request)
     {
-        var headers = request.Headers;
-        long contentLength = ContentLengthFields.Absent;
-        bool hasChunkedTE = false;
-
-        for (int i = 0; i < headers.Count; i++)
-        {
-            var name = headers[i].Key.Span;
-
-            if (name.Length == 17 && ParserConstants.AsciiEqualsIgnoreCase(name, TransferEncodingName))
-            {
-                var value = TrimOws(headers[i].Value.Span);
-                if (ParserConstants.AsciiEqualsIgnoreCase(value, ChunkedValue))
-                    hasChunkedTE = true;
-            }
-            else if (name.Length == 14 && ParserConstants.AsciiEqualsIgnoreCase(name, ContentLengthName))
-            {
-                ContentLengthFields.Fold(ref contentLength, headers[i].Value.Span);
-            }
-        }
+        long contentLength = ScanFramingFields(request.Headers, out bool hasChunkedTE);
 
         // Chunked takes priority over Content-Length (RFC 9112 §6.1)
         if (hasChunkedTE)
@@ -95,9 +77,33 @@ public static class BodyFramingDetector
             ParserConstants.AsciiEqualsIgnoreCase(requestMethod, ConnectMethodName))
             return BodyFramingResult.NoBody;
 
-        var headers = response.Headers;
+        long contentLength = ScanFramingFields(response.Headers, out bool hasChunkedTE);
+
+        // Chunked takes priority over Content-Length (RFC 9112 §6.1)
+        if (hasChunkedTE)
+            return BodyFramingResult.ForChunked;
+
+        if (contentLength > 0)
+            return BodyFramingResult.ForContentLength(contentLength);
+        if (contentLength == 0)
+            return BodyFramingResult.NoBody;
+
+        // No framing header at all. Unlike a request - which is simply bodyless here - a response
+        // runs to end of connection (RFC 9112 §6.3), which is also the only framing HTTP/1.0
+        // origins ever had.
+        return BodyFramingResult.ForUntilClose;
+    }
+
+    /// <summary>
+    /// The single pass over the header fields that both directions share: whether
+    /// Transfer-Encoding is chunked, and the length the Content-Length fields agree on
+    /// (<see cref="ContentLengthFields.Absent"/> when there are none).
+    /// </summary>
+    /// <exception cref="HttpParseException">The Content-Length fields disagree.</exception>
+    private static long ScanFramingFields(KeyValueList headers, out bool hasChunkedTE)
+    {
         long contentLength = ContentLengthFields.Absent;
-        bool hasChunkedTE = false;
+        hasChunkedTE = false;
 
         for (int i = 0; i < headers.Count; i++)
         {
@@ -115,19 +121,7 @@ public static class BodyFramingDetector
             }
         }
 
-        // Chunked takes priority over Content-Length (RFC 9112 §6.1)
-        if (hasChunkedTE)
-            return BodyFramingResult.ForChunked;
-
-        if (contentLength > 0)
-            return BodyFramingResult.ForContentLength(contentLength);
-        if (contentLength == 0)
-            return BodyFramingResult.NoBody;
-
-        // No framing header at all. Unlike a request - which is simply bodyless here - a response
-        // runs to end of connection (RFC 9112 §6.3), which is also the only framing HTTP/1.0
-        // origins ever had.
-        return BodyFramingResult.ForUntilClose;
+        return contentLength;
     }
 
     internal static ReadOnlySpan<byte> TrimOws(ReadOnlySpan<byte> value)
