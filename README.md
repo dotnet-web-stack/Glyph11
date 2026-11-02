@@ -50,7 +50,7 @@ if (UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in li
         var (name, value) = request.Headers[i];                       // zero-copy slices
         Console.WriteLine($"{Encoding.ASCII.GetString(name.Span)}: {Encoding.ASCII.GetString(value.Span)}");
     }
-    // advance your reader by bytesRead; reuse `request` across calls (request.Clear()).
+    // advance your reader by bytesRead; reuse `request` across calls (the parser clears it first).
 }
 // throws HttpParseException on a protocol/semantic violation; returns false if incomplete.
 ```

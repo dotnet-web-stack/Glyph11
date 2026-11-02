@@ -63,6 +63,10 @@ public static partial class UltraHardenedParser
         if (!ParserConstants.IsValidHttpVersion(versionSpan))
             throw new HttpParseException("Invalid HTTP version.", 505);
 
+        // ---- The parser owns the target: nothing from a previous message may carry over ----
+        // Cleared here, at the first write, so an incomplete call (false) leaves it untouched.
+        response.Clear();
+
         response.Version = input[..firstSpace];
 
         // --- Status code: exactly three digits — RFC 9112 §4 ---

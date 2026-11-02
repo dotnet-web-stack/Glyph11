@@ -75,6 +75,10 @@ public static partial class UltraHardenedParser
         if (!ParserConstants.IsValidToken(methodSpan))
             throw new HttpParseException("Method contains invalid token characters.");
 
+        // ---- The parser owns the target: nothing from a previous message may carry over ----
+        // Cleared here, at the first write, so an incomplete call (false) leaves it untouched.
+        request.Clear();
+
         request.Method = input[..firstSpace];
 
         // ---- Semantic: CONNECT method — RFC 9110 §9.3.6 ----
