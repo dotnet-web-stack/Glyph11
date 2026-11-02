@@ -45,13 +45,15 @@ public struct ChunkedBodyStream
         Complete,
     }
 
+    // The limit fields sit in the padding after the byte-sized phase, keeping the state at the
+    // 32 bytes it had: every call copies it (the NeedMoreData rollback snapshot).
     private Phase _phase;          // starts at ChunkSize
+    private bool _hasLimits;       // false for new ChunkedBodyStream(): ParserLimits.Default applies
+    private int _maxTrailerBytes;  // trailer section cap, when constructed with limits
     private long _chunkSize;       // parsed size for current chunk
     private long _remaining;       // bytes left in ChunkData phase
     private int _digitCount;       // hex digits seen in ChunkSize
     private int _extensionBytes;   // extension bytes (4096 limit)
-    private int _maxTrailerBytes;  // trailer section cap, when constructed with limits
-    private bool _hasLimits;       // false for new ChunkedBodyStream(): ParserLimits.Default applies
 
     /// <summary>
     /// Creates a decoder that enforces <paramref name="limits"/> (today:
@@ -367,6 +369,7 @@ public struct ChunkedBodyStream
         var reader = new SequenceReader<byte>(input);
         var snapshot = this;                 // roll back on NeedMoreData — caller re-presents the bytes
         ReadOnlySequence<byte> pending = default;
+        bool hasPending = false;          // cheaper to test than pending.IsEmpty, once per chunk
         long trailerStart = 0;               // the trailer section is always parsed within one call
 
         while (!reader.End)
@@ -470,6 +473,7 @@ public struct ChunkedBodyStream
                         return ChunkResult.Chunk;
                     }
                     pending = reader.UnreadSequence.Slice(0, _remaining);
+                    hasPending = true;
                     reader.Advance(_remaining);
                     _remaining = 0;
                     _phase = Phase.DataCrlf;
@@ -482,7 +486,7 @@ public struct ChunkedBodyStream
                     {
                         // The CRLF after the data has not arrived: hand out data read by this call
                         // anyway — the CRLF is checked on the next call.
-                        if (!pending.IsEmpty)
+                        if (hasPending)
                         {
                             bytesConsumed = reader.Consumed;
                             chunkData = pending;
@@ -503,7 +507,7 @@ public struct ChunkedBodyStream
                     _digitCount = 0;
                     _extensionBytes = 0;
 
-                    if (!pending.IsEmpty)
+                    if (hasPending)
                     {
                         bytesConsumed = reader.Consumed;
                         chunkData = pending;
@@ -561,7 +565,7 @@ public struct ChunkedBodyStream
 
         // Ran out of input. A chunk whose data is all here but whose CRLF is not is still
         // handed out (the CRLF is checked on the next call); anything else waits.
-        if (!pending.IsEmpty)
+        if (hasPending)
         {
             bytesConsumed = reader.Consumed;
             chunkData = pending;
