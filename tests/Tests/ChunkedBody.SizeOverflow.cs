@@ -1,4 +1,6 @@
 using System.Buffers;
+using System.Globalization;
+using System.Numerics;
 using System.Text;
 using Glyph11;
 using Glyph11.Parser;
@@ -201,5 +203,53 @@ public class ChunkedBodySizeOverflowTests
     public void JustBelowLongMaxValue_Validator_IsIncomplete()
     {
         Assert.False(ChunkedBodyValidator.TryValidate(B("7ffffffffffffff0\r\nhello"), out _));
+    }
+
+    // ---- any size: accepted exactly when it has at most 16 digits and fits a long ----
+    // The expectation comes from BigInteger, independent of the parsers' arithmetic, and the cases
+    // crowd around 2^63 and the 16-digit cap. Only the size line is sent, so an accepted size waits
+    // for its data (NeedMoreData, or false from the validator) and a refused one throws at once.
+
+    [Fact]
+    public void AnySize_IsAcceptedExactlyWhenItFitsALong()
+    {
+        var rng = new Random(20261102);
+        for (int i = 0; i < 2000; i++)
+        {
+            string size = RandomHexSize(rng);
+            bool fits = size.Length <= 16
+                && BigInteger.Parse("0" + size, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture) <= long.MaxValue;
+            var input = B(size + "\r\n");
+
+            if (fits)
+            {
+                Assert.True(new ChunkedBodyStream().TryReadChunk(input, out _, out _, out _) == ChunkResult.NeedMoreData, $"span: {size}");
+                Assert.True(new ChunkedBodyStream().TryReadChunk(Segmented(input, 3), out _, out _) == ChunkResult.NeedMoreData, $"sequence: {size}");
+                Assert.False(ChunkedBodyValidator.TryValidate(input, out _), $"validator: {size}");
+            }
+            else
+            {
+                Assert.Equal(Overflow, Assert.Throws<HttpParseException>(() => new ChunkedBodyStream().TryReadChunk(input, out _, out _, out _)).Message);
+                Assert.Equal(Overflow, Assert.Throws<HttpParseException>(() => new ChunkedBodyStream().TryReadChunk(Segmented(input, 3), out _, out _)).Message);
+                Assert.Equal(Overflow, Assert.Throws<HttpParseException>(() => ChunkedBodyValidator.TryValidate(input, out _)).Message);
+            }
+        }
+    }
+
+    private static string RandomHexSize(Random rng) => rng.Next(4) switch
+    {
+        0 => Hex(rng, rng.Next(1, 21)),                                   // 1 to 20 digits
+        1 => (rng.Next(2) == 0 ? "7" : "8") + Hex(rng, 15),               // 16 digits either side of 2^63
+        2 => new string('0', rng.Next(1, 6)) + Hex(rng, rng.Next(1, 17)), // leading zeros, past the cap too
+        _ => "7fffffffffffff" + Hex(rng, rng.Next(1, 4)),                 // 15 to 17 digits at the edge
+    };
+
+    private static string Hex(Random rng, int count)
+    {
+        const string digits = "0123456789abcdefABCDEF";
+        var chars = new char[count];
+        for (int i = 0; i < count; i++)
+            chars[i] = digits[rng.Next(digits.Length)];
+        return new string(chars);
     }
 }
