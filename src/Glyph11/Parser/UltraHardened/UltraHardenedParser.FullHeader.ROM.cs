@@ -94,9 +94,13 @@ public static partial class UltraHardenedParser
             throw new HttpParseException("Request-target contains invalid characters.");
 
         // --- Version ---
+        // A well-formed HTTP-version this parser does not implement is 505 (RFC 9110 §15.6.6);
+        // bytes that are not an HTTP-version at all make a malformed request line, 400.
         var versionSpan = requestLine[(secondSpace + 1)..];
         if (!ParserConstants.IsValidHttpVersion(versionSpan))
-            throw new HttpParseException("Invalid HTTP version.", 505);
+            throw ParserConstants.IsWellFormedHttpVersion(versionSpan)
+                ? new HttpParseException("Unsupported HTTP version.", 505)
+                : new HttpParseException("Invalid HTTP version.");
 
         request.Version = input.Slice(secondSpace + 1, versionSpan.Length);
 
