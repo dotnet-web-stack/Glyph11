@@ -20,10 +20,14 @@ public static class BodyFramingDetector
     /// framing kind (chunked, content-length, or none) without touching any body bytes.
     /// Single pass over headers.
     /// </summary>
+    /// <exception cref="HttpParseException">
+    /// The Content-Length fields — or the elements of a list in one — state different lengths. The
+    /// hardened parser already rejects these; this catches them for any other parser.
+    /// </exception>
     public static BodyFramingResult DetectBodyFraming(BinaryRequest request)
     {
         var headers = request.Headers;
-        ReadOnlySpan<byte> contentLengthValue = default;
+        long contentLength = ContentLengthFields.Absent;
         bool hasChunkedTE = false;
 
         for (int i = 0; i < headers.Count; i++)
@@ -38,7 +42,7 @@ public static class BodyFramingDetector
             }
             else if (name.Length == 14 && ParserConstants.AsciiEqualsIgnoreCase(name, ContentLengthName))
             {
-                contentLengthValue = TrimOws(headers[i].Value.Span);
+                ContentLengthFields.Fold(ref contentLength, headers[i].Value.Span);
             }
         }
 
@@ -46,12 +50,8 @@ public static class BodyFramingDetector
         if (hasChunkedTE)
             return BodyFramingResult.ForChunked;
 
-        if (!contentLengthValue.IsEmpty)
-        {
-            long cl = ParseContentLengthDigits(contentLengthValue);
-            if (cl > 0)
-                return BodyFramingResult.ForContentLength(cl);
-        }
+        if (contentLength > 0)
+            return BodyFramingResult.ForContentLength(contentLength);
 
         return BodyFramingResult.NoBody;
     }
@@ -72,6 +72,9 @@ public static class BodyFramingDetector
     /// all, then Transfer-Encoding, then Content-Length, and a response with none of those runs
     /// until the connection closes.
     /// </remarks>
+    /// <exception cref="HttpParseException">
+    /// The Content-Length fields — or the elements of a list in one — state different lengths.
+    /// </exception>
     public static BodyFramingResult DetectResponseBodyFraming(
         BinaryResponse response, ReadOnlySpan<byte> requestMethod)
     {
@@ -93,7 +96,7 @@ public static class BodyFramingDetector
             return BodyFramingResult.NoBody;
 
         var headers = response.Headers;
-        ReadOnlySpan<byte> contentLengthValue = default;
+        long contentLength = ContentLengthFields.Absent;
         bool hasChunkedTE = false;
 
         for (int i = 0; i < headers.Count; i++)
@@ -108,7 +111,7 @@ public static class BodyFramingDetector
             }
             else if (name.Length == 14 && ParserConstants.AsciiEqualsIgnoreCase(name, ContentLengthName))
             {
-                contentLengthValue = TrimOws(headers[i].Value.Span);
+                ContentLengthFields.Fold(ref contentLength, headers[i].Value.Span);
             }
         }
 
@@ -116,14 +119,10 @@ public static class BodyFramingDetector
         if (hasChunkedTE)
             return BodyFramingResult.ForChunked;
 
-        if (!contentLengthValue.IsEmpty)
-        {
-            long cl = ParseContentLengthDigits(contentLengthValue);
-            if (cl > 0)
-                return BodyFramingResult.ForContentLength(cl);
-            if (cl == 0)
-                return BodyFramingResult.NoBody;
-        }
+        if (contentLength > 0)
+            return BodyFramingResult.ForContentLength(contentLength);
+        if (contentLength == 0)
+            return BodyFramingResult.NoBody;
 
         // No framing header at all. Unlike a request - which is simply bodyless here - a response
         // runs to end of connection (RFC 9112 §6.3), which is also the only framing HTTP/1.0
@@ -131,7 +130,7 @@ public static class BodyFramingDetector
         return BodyFramingResult.ForUntilClose;
     }
 
-    private static ReadOnlySpan<byte> TrimOws(ReadOnlySpan<byte> value)
+    internal static ReadOnlySpan<byte> TrimOws(ReadOnlySpan<byte> value)
     {
         int start = 0;
         while (start < value.Length && (value[start] == (byte)' ' || value[start] == (byte)'\t'))
@@ -142,7 +141,7 @@ public static class BodyFramingDetector
         return value[start..end];
     }
 
-    private static long ParseContentLengthDigits(ReadOnlySpan<byte> value)
+    internal static long ParseContentLengthDigits(ReadOnlySpan<byte> value)
     {
         // Handle comma-separated: take first segment
         int comma = value.IndexOf((byte)',');

@@ -17,48 +17,28 @@ public static class ContentLengthBodyReader
 
     /// <summary>
     /// Parses the Content-Length header value from the request. Returns -1 if absent or invalid.
+    /// Every Content-Length field, and every element of a list in one, must state the same length:
+    /// this reads the length <see cref="BodyFramingDetector.DetectBodyFraming"/> frames by, by the
+    /// same rule, so the two cannot disagree.
     /// </summary>
+    /// <exception cref="HttpParseException">
+    /// The Content-Length fields — or the elements of a list in one — state different lengths. The
+    /// hardened parser already rejects these; this catches them for any other parser.
+    /// </exception>
     public static long ParseContentLength(BinaryRequest request)
     {
         var headers = request.Headers;
+        long contentLength = ContentLengthFields.Absent;
 
         for (int i = 0; i < headers.Count; i++)
         {
             if (!AsciiEqualsIgnoreCase(headers[i].Key.Span, ContentLengthName))
                 continue;
 
-            var value = headers[i].Value.Span;
-
-            // Trim OWS
-            int start = 0;
-            while (start < value.Length && (value[start] == (byte)' ' || value[start] == (byte)'\t'))
-                start++;
-            int end = value.Length;
-            while (end > start && (value[end - 1] == (byte)' ' || value[end - 1] == (byte)'\t'))
-                end--;
-
-            var trimmed = value[start..end];
-
-            // Handle comma-separated: take first segment
-            int comma = trimmed.IndexOf((byte)',');
-            if (comma >= 0)
-                trimmed = trimmed[..comma];
-
-            // Parse digits
-            long result = 0;
-            if (trimmed.IsEmpty) return -1;
-            for (int j = 0; j < trimmed.Length; j++)
-            {
-                byte b = trimmed[j];
-                if (b < (byte)'0' || b > (byte)'9') return -1;
-                result = result * 10 + (b - '0');
-                if (result < 0) return -1; // overflow
-            }
-
-            return result;
+            ContentLengthFields.Fold(ref contentLength, headers[i].Value.Span);
         }
 
-        return -1;
+        return contentLength >= 0 ? contentLength : -1;
     }
 
     private static bool AsciiEqualsIgnoreCase(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
