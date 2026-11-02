@@ -78,9 +78,11 @@ public static partial class UltraHardenedParser
 
         int status = ((codeSpan[0] - '0') * 100) + ((codeSpan[1] - '0') * 10) + (codeSpan[2] - '0');
 
-        // A three-digit code below 100 is well-formed but not a status — 0xx has no meaning and
-        // treating it as one lets a garbage first line pass as a response.
-        if (status < 100)
+        // RFC 9110 §15 — valid status codes are 100-599. A three-digit code outside that range is
+        // well-formed but not a status: 0xx and 6xx-9xx have no meaning, treating one as a status
+        // lets a garbage first line pass as a response, and a caller branching on the class
+        // (1xx, 2xx, ...) would meet classes that do not exist.
+        if (status is < 100 or > 599)
             throw new HttpParseException("Status code must be in the range 100-599.");
 
         response.StatusCode = input.Slice(codeStart, 3);
