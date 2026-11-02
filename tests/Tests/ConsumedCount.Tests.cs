@@ -71,17 +71,31 @@ public class ConsumedCountTests
         "HTTP/1.1 200 OK\r\n\r",
     ];
 
-    public static IEnumerable<object[]> Requests() =>
-        from c in RequestCorpus from s in Shapes select new object[] { c.Head, c.Tail, s };
+    public static TheoryData<string, string, Shape> Requests() => InEveryShape(RequestCorpus);
 
-    public static IEnumerable<object[]> Responses() =>
-        from c in ResponseCorpus from s in Shapes select new object[] { c.Head, c.Tail, s };
+    public static TheoryData<string, string, Shape> Responses() => InEveryShape(ResponseCorpus);
 
-    public static IEnumerable<object[]> PartialRequests() =>
-        from r in IncompleteRequests from s in Shapes select new object[] { r, s };
+    public static TheoryData<string, Shape> PartialRequests() => InEveryShape(IncompleteRequests);
 
-    public static IEnumerable<object[]> PartialResponses() =>
-        from r in IncompleteResponses from s in Shapes select new object[] { r, s };
+    public static TheoryData<string, Shape> PartialResponses() => InEveryShape(IncompleteResponses);
+
+    private static TheoryData<string, string, Shape> InEveryShape((string Head, string Tail)[] corpus)
+    {
+        var data = new TheoryData<string, string, Shape>();
+        foreach (var (head, tail) in corpus)
+            foreach (var shape in Shapes)
+                data.Add(head, tail, shape);
+        return data;
+    }
+
+    private static TheoryData<string, Shape> InEveryShape(string[] inputs)
+    {
+        var data = new TheoryData<string, Shape>();
+        foreach (var input in inputs)
+            foreach (var shape in Shapes)
+                data.Add(input, shape);
+        return data;
+    }
 
     // ================================================================
     // consumed is the header block length; what follows starts there
