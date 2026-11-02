@@ -274,9 +274,9 @@ public static partial class UltraHardenedParser
             {
                 hostCount++;
 
-                // RFC 9110 §7.2 — Host must be host:port only
-                if (valueSpan.IndexOf((byte)'@') >= 0 || valueSpan.IndexOf((byte)'/') >= 0)
-                    throw new HttpParseException("Invalid Host header: contains '@' or '/'.");
+                // RFC 9110 §7.2 / RFC 3986 §3.2.2 — Host is uri-host [ ":" port ] and nothing else
+                if (!SemIsValidHost(valueSpan))
+                    throw new HttpParseException("Invalid Host header.");
             }
 
             lineStart += lineLen + 2;
