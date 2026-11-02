@@ -28,13 +28,4 @@
 
     </PropertyGroup>
 
-    <ItemGroup>
-        <!-- Kept although Glyph11.Pico is no longer built here. The already-published
-             Glyph11.Pico 0.0.1 (used alongside Glyph11, e.g. by GenHTTP) sets BinaryRequest's
-             internal setters and calls the internal KeyValueList.Add, and the runtime enforces friend
-             access: without this attribute those calls fail with MethodAccessException as soon
-             as Pico runs against a newer Glyph11. Remove it once Pico 0.0.1 has no users. -->
-        <InternalsVisibleTo Include="Glyph11.Pico" />
-    </ItemGroup>
-
 </Project>
