@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Glyph11;
 using Glyph11.Parser;
@@ -528,5 +529,15 @@ public class ChunkedBodyStreamLimitsTests
     {
         var ex = Assert.Throws<HttpParseException>(() => ReadSpan(new ChunkedBodyStream(), TrailerBody(DefaultTrailerCap + 1)));
         Assert.True(ex.IsLimitViolation);
+    }
+
+    // ---- the state every call copies (the NeedMoreData rollback snapshot) stays small ----
+
+    [Fact]
+    public void DecoderState_StaysAt32Bytes()
+    {
+        // The limit fields sit in the padding after the byte-sized phase. A field that grows the
+        // struct makes every TryReadChunk call copy more; move it into padding or rethink the snapshot.
+        Assert.Equal(32, Unsafe.SizeOf<ChunkedBodyStream>());
     }
 }
