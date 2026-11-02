@@ -101,15 +101,21 @@ public partial class UltraHardenedParserTests
         ":80",
     };
 
-    public static IEnumerable<object[]> ValidHostCases() =>
-        from host in ValidHosts
-        from multi in new[] { false, true }
-        select new object[] { host, multi };
+    public static TheoryData<string, bool> ValidHostCases() => WithBothShapes(ValidHosts);
 
-    public static IEnumerable<object[]> InvalidHostCases() =>
-        from host in InvalidHosts
-        from multi in new[] { false, true }
-        select new object[] { host, multi };
+    public static TheoryData<string, bool> InvalidHostCases() => WithBothShapes(InvalidHosts);
+
+    // Each host as one contiguous buffer and split across segments.
+    private static TheoryData<string, bool> WithBothShapes(IEnumerable<string> hosts)
+    {
+        var data = new TheoryData<string, bool>();
+        foreach (var host in hosts)
+        {
+            data.Add(host, false);
+            data.Add(host, true);
+        }
+        return data;
+    }
 
     [Theory]
     [MemberData(nameof(ValidHostCases))]

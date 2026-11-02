@@ -104,63 +104,76 @@ public static partial class UltraHardenedParser
     /// </summary>
     private static bool SemIsValidIPv6(ReadOnlySpan<byte> address)
     {
-        int n = address.Length;
-        if (n < 2)
+        if (address.Length < 2)
             return false;
 
-        int i = 0;
+        // Only "::" may open the address.
+        bool elided = address[0] == (byte)':';
+        if (elided && address[1] != (byte)':')
+            return false;
+
+        int i = elided ? 2 : 0;
         int groups = 0;
-        bool elided = false;
 
-        if (address[0] == (byte)':')
+        while (i < address.Length)
         {
-            // Only "::" may open the address.
-            if (address[1] != (byte)':')
+            int digits = SemCountHexDigits(address[i..]);
+
+            // ls32 as IPv4address: the rest of the literal, counting as two groups.
+            if (i + digits < address.Length && address[i + digits] == (byte)'.')
+                return SemIsValidIPv4(address[i..]) && SemIsCompleteIPv6(groups + 2, elided);
+
+            if (digits is 0 or > 4)
                 return false;
-            elided = true;
-            i = 2;
-        }
 
-        while (i < n)
-        {
-            int start = i;
-            while (i < n && i - start < 5 && SemIsHexDigit(address[i]))
-                i++;
-
-            if (i < n && address[i] == (byte)'.')
-            {
-                // ls32 as IPv4address: the rest of the literal, counting as two groups.
-                if (!SemIsValidIPv4(address[start..]))
-                    return false;
-                groups += 2;
-                break;
-            }
-
-            int length = i - start;
-            if (length is 0 or > 4)
-                return false;
             groups++;
+            i += digits;
 
-            if (i == n)
-                break;
-            if (address[i] != (byte)':')
+            if (!SemSkipIPv6Separator(address, ref i, ref elided))
                 return false;
-
-            i++;
-            if (i == n)
-                return false; // a lone trailing ':'
-
-            if (address[i] == (byte)':')
-            {
-                if (elided)
-                    return false; // a second "::"
-                elided = true;
-                i++;
-            }
         }
 
-        return elided ? groups <= 7 : groups == 8;
+        return SemIsCompleteIPv6(groups, elided);
     }
+
+    /// <summary>
+    /// The hex digits <paramref name="s"/> starts with, counted up to five: one more than a group
+    /// may hold, so an over-long group is seen as one.
+    /// </summary>
+    private static int SemCountHexDigits(ReadOnlySpan<byte> s)
+    {
+        int n = 0;
+        while (n < s.Length && n < 5 && SemIsHexDigit(s[n]))
+            n++;
+        return n;
+    }
+
+    /// <summary>
+    /// Steps <paramref name="i"/> over what follows an IPv6 group: the end of the address, the ':'
+    /// before the next group, or the one "::" allowed. False for anything else, including a lone
+    /// trailing ':'.
+    /// </summary>
+    private static bool SemSkipIPv6Separator(ReadOnlySpan<byte> address, ref int i, ref bool elided)
+    {
+        if (i == address.Length)
+            return true;
+
+        if (address[i] != (byte)':' || ++i == address.Length)
+            return false;
+
+        if (address[i] != (byte)':')
+            return true;
+
+        if (elided)
+            return false; // a second "::"
+
+        elided = true;
+        i++;
+        return true;
+    }
+
+    /// <summary>Eight groups, or fewer when a "::" stands for at least one zero group.</summary>
+    private static bool SemIsCompleteIPv6(int groups, bool elided) => elided ? groups <= 7 : groups == 8;
 
     /// <summary>
     /// IPv4address = dec-octet "." dec-octet "." dec-octet "." dec-octet, where a dec-octet is
