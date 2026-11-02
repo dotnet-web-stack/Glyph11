@@ -51,8 +51,11 @@ public static class ContentLengthBodyReader
             {
                 byte b = trimmed[j];
                 if (b < (byte)'0' || b > (byte)'9') return -1;
-                result = result * 10 + (b - '0');
-                if (result < 0) return -1; // overflow
+                int digit = b - '0';
+                // Saturate rather than fail: the validator accepts lengths up to ulong.MaxValue, and
+                // one a long cannot hold must read as too large, never as absent. Every remaining
+                // byte is still checked to be a digit.
+                result = result > (long.MaxValue - digit) / 10 ? long.MaxValue : result * 10 + digit;
             }
 
             return result;
