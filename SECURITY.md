@@ -11,7 +11,7 @@ Glyph11's security is delivered by **`UltraHardenedParser`**, which enforces RFC
 
 ## Syntactic Protections
 
-These checks are enforced during `TryExtractFullHeaderValidated` / `TryExtractFullHeaderROM`. Violations throw `HttpParseException`.
+These checks are enforced during `TryParseRequestHeader` (both the `ReadOnlySequence<byte>` and `ReadOnlyMemory<byte>` overloads). Violations throw `HttpParseException`.
 
 ### Bare LF Rejection
 
@@ -240,9 +240,9 @@ var limits = ParserLimits.Default;
 
 // Structural + semantic validation in a single pass.
 // Throws HttpParseException on any protocol or semantic violation.
-if (UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in limits, out var bytesRead))
+if (UltraHardenedParser.TryParseRequestHeader(ref buffer, request, in limits, out var consumed))
 {
-    // Safe to process request — fully validated.
+    // Safe to process request — fully validated. The body (if any) starts at `consumed`.
 }
 ```
 

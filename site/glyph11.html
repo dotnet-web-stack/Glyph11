@@ -72,9 +72,9 @@ ReadOnlySequence&lt;byte&gt; buffer = new(Encoding.ASCII.GetBytes(
 //   true  → a complete, valid header block was parsed into `request`
 //   false → the buffer doesn't yet hold a full header block (read more, then retry)
 //   throws HttpParseException → the bytes are a complete but INVALID/malicious request
-if (UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in limits, out int bytesRead))
+if (UltraHardenedParser.TryParseRequestHeader(ref buffer, request, in limits, out int consumed))
 {
-    // `request` is now populated. `bytesRead` marks the header block (see "Errors &amp; reuse").
+    // `request` is now populated. `consumed` is the header block's length: the body starts there.
     Console.WriteLine(Encoding.ASCII.GetString(request.Method.Span)); // GET
     Console.WriteLine(Encoding.ASCII.GetString(request.Path.Span));   // /api/users
 }</code></pre>
@@ -116,18 +116,19 @@ for (int i = 0; i &lt; request.Headers.Count; i++)
 
     <h2 id="contiguous">Contiguous fast path</h2>
     <p>If your request is already in one contiguous buffer (a single <code>byte[]</code> /
-    <code>ReadOnlyMemory&lt;byte&gt;</code>), use <code>TryExtractFullHeaderROM</code> — it skips the
+    <code>ReadOnlyMemory&lt;byte&gt;</code>), use the <code>ReadOnlyMemory&lt;byte&gt;</code> overload of
+    <code>TryParseRequestHeader</code> — it skips the
     segment-walking machinery and parses in place.</p>
 <pre><code class="language-csharp">// A request you already have fully buffered as one block.
 ReadOnlyMemory&lt;byte&gt; rom = Encoding.ASCII.GetBytes(
     "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
 
 // Same contract as above (true / false / throws), but for a single contiguous buffer.
-if (UltraHardenedParser.TryExtractFullHeaderROM(ref rom, request, in limits, out int read))
+if (UltraHardenedParser.TryParseRequestHeader(ref rom, request, in limits, out int consumed))
 {
     // request.Method, request.Path, ...
 }</code></pre>
-    <div class="note"><b>Tip:</b> <code>TryExtractFullHeaderValidated</code> already takes the contiguous fast
+    <div class="note"><b>Tip:</b> the <code>ReadOnlySequence&lt;byte&gt;</code> overload already takes the contiguous fast
     path internally when its sequence is single-segment — so prefer it unless you specifically hold a
     <code>ReadOnlyMemory&lt;byte&gt;</code> and want to skip the sequence wrapper.</div>
 
@@ -161,11 +162,11 @@ var limits = ParserLimits.Default with
         try
         {
             request.Clear(); // reset before each parse attempt
-            if (UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in limits, out int bytesRead))
+            if (UltraHardenedParser.TryParseRequestHeader(ref buffer, request, in limits, out int consumed))
             {
-                // Got a full, valid request. The body starts right after the header block.
-                // `bytesRead` follows glyph11's -1 convention, so advance by bytesRead + 1:
-                SequencePosition bodyStart = read.Buffer.GetPosition(bytesRead + 1);
+                // Got a full, valid request. The body starts right after the header block,
+                // which is exactly `consumed` bytes long:
+                SequencePosition bodyStart = read.Buffer.GetPosition(consumed);
                 // ... dispatch `request`, then read/handle the body from bodyStart ...
                 reader.AdvanceTo(bodyStart);
                 return;
@@ -227,8 +228,10 @@ while (true)
       <li><b><code>HttpParseException</code></b> — the bytes are a complete but invalid request (bad token,
         smuggling vector, limit breach, …). Map to HTTP 400 / 431 and close the connection.</li>
     </ul>
-    <div class="warn"><b><code>bytesRead</code> is the header length minus one</b> — a long-standing glyph11
-    convention. The body begins at <code>bytesRead + 1</code>; advance your reader by that.</div>
+    <div class="warn"><b>Migrating from <code>TryExtractFullHeaderROM</code> / <code>TryExtractFullHeaderValidated</code>?</b>
+    Those entry points are obsolete: they report the header length <i>minus one</i>, which is why callers
+    added 1. <code>TryParseRequestHeader</code> reports the length itself — switch to it and drop the
+    <code>+ 1</code>. The body begins at <code>consumed</code>.</div>
     <p>Reuse the request to stay allocation-free across a connection: <code>request.Clear()</code> between
     parses keeps the pooled header/query arrays; <code>request.Dispose()</code> returns them to the
     <code>ArrayPool</code> when you're done with the connection.</p>
