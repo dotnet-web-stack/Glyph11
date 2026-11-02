@@ -1,196 +1,234 @@
 # Glyph11
 
-A zero-allocation, hardened HTTP/1.1 request parser for .NET — RFC 9110/9112 validation,
-configurable resource limits, and request-smuggling / semantic checks fused into a single
-zero-copy pass. Available as three NuGet packages that trade portability, native speed, and
-raw throughput.
+A zero-allocation, hardened HTTP/1.1 parser for .NET. It parses requests and responses with
+RFC 9110/9112 validation, request-smuggling defences and configurable resource limits, all in
+a single zero-copy pass. Pure managed and dependency-free.
 
 [![Glyph11](https://img.shields.io/nuget/v/Glyph11.svg?label=Glyph11)](https://www.nuget.org/packages/Glyph11/)
-[![Glyph11.Native](https://img.shields.io/nuget/v/Glyph11.Native.svg?label=Glyph11.Native)](https://www.nuget.org/packages/Glyph11.Native/)
-[![Glyph11.Pico](https://img.shields.io/nuget/v/Glyph11.Pico.svg?label=Glyph11.Pico)](https://www.nuget.org/packages/Glyph11.Pico/)
 ![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-512bd4)
 [![Docs](https://img.shields.io/badge/docs%20%26%20benchmarks-online-blue)](https://dotnet-web-stack.github.io/Glyph11/)
 
-## Three packages
+> **`Glyph11.Native` and `Glyph11.Pico` are discontinued.** Their published versions stay on
+> NuGet but get no further releases. Glyph11 is the managed parser only.
 
-| Package | What it is | Output | Validation | Dependencies | Best for |
-|---|---|---|---|---|---|
-| **[Glyph11](https://www.nuget.org/packages/Glyph11/)** | pure-managed hardened parser | `BinaryRequest` | full (RFC + smuggling) | none — runs anywhere | portability, zero deps |
-| **[Glyph11.Native](https://www.nuget.org/packages/Glyph11.Native/)** | the C core via P/Invoke | raw field spans | full (same as managed) | native `libglyph11` per RID | native speed, zero-alloc |
-| **[Glyph11.Pico](https://www.nuget.org/packages/Glyph11.Pico/)** | picohttpparser + managed glue | `BinaryRequest` | picohttpparser only | native `libglyph11pico` + `Glyph11` | maximum speed, validate elsewhere |
+```
+dotnet add package Glyph11
+```
 
-All three produce the same data; `Glyph11` and `Glyph11.Pico` fill the identical
-`BinaryRequest`, so swapping between them is a one-line change.
+## Parsing a request
 
-## Glyph11 — pure managed
-
-Dependency-free, runs on any .NET target. Parses a `ReadOnlySequence<byte>` (from a
-`PipeReader`, socket, …) or a contiguous `ReadOnlyMemory<byte>`.
+The parser reads a `ReadOnlySequence<byte>` (from a `PipeReader`, a socket, …) or a contiguous
+`ReadOnlyMemory<byte>`. Every field it fills is a zero-copy slice of your buffer.
 
 ```csharp
 using System.Buffers;
 using System.Text;
-using Glyph11.Protocol;
+using Glyph11;
 using Glyph11.Parser;
 using Glyph11.Parser.UltraHardened;
+using Glyph11.Protocol;
 
-var request = new BinaryRequest();
+var request = new BinaryRequest();          // reuse it across requests; it holds pooled arrays
 var limits  = ParserLimits.Default;
 
 ReadOnlySequence<byte> buffer = new(Encoding.ASCII.GetBytes(
     "GET /api/users?page=1 HTTP/1.1\r\nHost: example.com\r\nAccept: */*\r\n\r\n"));
 
-if (UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in limits, out int bytesRead))
+try
 {
-    Console.WriteLine(Encoding.ASCII.GetString(request.Method.Span)); // GET
-    Console.WriteLine(Encoding.ASCII.GetString(request.Path.Span));   // /api/users
-
-    for (int i = 0; i < request.Headers.Count; i++)
+    if (UltraHardenedParser.TryParseRequestHeader(ref buffer, request, in limits, out int consumed))
     {
-        var (name, value) = request.Headers[i];                       // zero-copy slices
-        Console.WriteLine($"{Encoding.ASCII.GetString(name.Span)}: {Encoding.ASCII.GetString(value.Span)}");
+        Console.WriteLine(Encoding.ASCII.GetString(request.Method.Span)); // GET
+        Console.WriteLine(Encoding.ASCII.GetString(request.Path.Span));   // /api/users
+
+        for (int i = 0; i < request.Headers.Count; i++)
+        {
+            var (name, value) = request.Headers[i];
+            Console.WriteLine($"{Encoding.ASCII.GetString(name.Span)}: {Encoding.ASCII.GetString(value.Span)}");
+        }
+
+        // The body, or the next pipelined request, starts at `consumed`.
     }
-    // advance your reader by bytesRead; reuse `request` across calls (request.Clear()).
+    else
+    {
+        // Incomplete: read more bytes and call again with the whole buffer.
+    }
 }
-// throws HttpParseException on a protocol/semantic violation; returns false if incomplete.
-```
-
-`TryExtractFullHeaderROM(ref ReadOnlyMemory<byte>, …)` is the single-buffer fast path.
-
-## Glyph11.Native — C core via P/Invoke
-
-Same validation, native speed, **zero allocation** (you provide the field storage). Bundles
-`libglyph11` for `linux-x64/arm64`, `win-x64/arm64`, `osx-x64/arm64`.
-
-```csharp
-using System.Text;
-using Glyph11.Native;
-
-byte[] request = Encoding.ASCII.GetBytes(
-    "GET /api/users?page=1 HTTP/1.1\r\nHost: example.com\r\n\r\n");
-
-var limits = Glyph11Limits.Default;
-Span<Glyph11Field> headers = stackalloc Glyph11Field[(int)limits.MaxHeaderCount];
-Span<Glyph11Field> query   = stackalloc Glyph11Field[(int)limits.MaxQueryParameterCount];
-
-int status = Glyph11Parser.Parse(request, headers, query, limits, out var r);
-if (status == Glyph11Parser.Ok)
+catch (HttpParseException ex)
 {
-    string Slice(Glyph11Span s) => Encoding.ASCII.GetString(request, (int)s.Offset, (int)s.Length);
-    Console.WriteLine(Slice(r.Method)); // GET
-    Console.WriteLine(Slice(r.Path));   // /api/users
-    for (int i = 0; i < r.HeaderCount; i++)
-        Console.WriteLine($"{Slice(headers[i].Name)}: {Slice(headers[i].Value)}");
+    // A complete but invalid request: answer ex.StatusCode (400, 431 or 505) and close.
 }
-// status: 0 = OK, 1 = incomplete, otherwise a protocol/limit error (→ HTTP 400 / 431).
 ```
 
-A `ReadOnlySequence<byte>` overload handles fragmented input — single-segment is parsed in
-place (zero-copy), multi-segment is linearized into a caller-provided scratch (the C core
-needs one contiguous slab). `parsed` is the contiguous span the offsets index into:
+- `true`: the header block is complete and valid. `consumed` is its length, including the
+  final CRLFCRLF.
+- `false`: more bytes are needed. A message that can never become valid, such as one with a
+  bare LF, is rejected right away rather than reported incomplete.
+- `HttpParseException`: the request is invalid. `StatusCode` is 431 when a limit is exceeded
+  (`IsLimitViolation`), 505 for a well-formed HTTP version other than 1.0/1.1, and 400 for
+  everything else.
+
+The parser clears `request` before filling it, so nothing carries over from the previous
+message. Disposing the request returns its arrays to the `ArrayPool`.
+
+## Parsing a response
+
+`TryParseResponseHeader` takes the same arguments and fills a `BinaryResponse` (version,
+status code, reason phrase, headers):
 
 ```csharp
-Span<byte> scratch = stackalloc byte[8192];           // sized to your max header block
-int status = Glyph11Parser.Parse(sequence, scratch, headers, query, limits,
-                                  out var r, out ReadOnlySpan<byte> parsed);
-// slice fields against `parsed` — the input's first segment, or `scratch`.
-```
-
-> **`linux-x64` requires AVX2** (Haswell / 2013+ — universal on modern servers): the SIMD
-> scanners inline into the parse loop for ~15% on large headers. Other RIDs use the portable
-> baseline.
-
-## Glyph11.Pico — fastest path to a `BinaryRequest`
-
-[picohttpparser](https://github.com/h2o/picohttpparser) (native, SSE4.2) tokenizes; minimal
-managed glue fills the same `BinaryRequest` as `Glyph11`. **No validation beyond
-picohttpparser's** — the trade is raw speed.
-
-```csharp
-using System.Text;
-using Glyph11.Pico;
-using Glyph11.Protocol;
-
-var request = new BinaryRequest();
-byte[] input = "GET /api/users?page=1 HTTP/1.1\r\nHost: example.com\r\n\r\n"u8.ToArray();
-
-if (PicoParser.TryParse(input, request, out int consumed))
+var response = new BinaryResponse();
+if (UltraHardenedParser.TryParseResponseHeader(ref buffer, response, in limits, out int consumed))
 {
-    Console.WriteLine(Encoding.ASCII.GetString(request.Method.Span)); // GET
-    Console.WriteLine(Encoding.ASCII.GetString(request.Path.Span));   // /api/users
-    // request.Version / .Headers / .QueryParameters — same shape as Glyph11.
+    int status = response.Status;   // 100-599; anything else throws
 }
 ```
 
-A `ReadOnlySequence<byte>` overload is also available — single-segment zero-copy,
-multi-segment linearized into a fresh array (the `BinaryRequest` slices keep it alive):
+## Body framing
+
+After the header, the framing headers decide how the body is read.
 
 ```csharp
-if (PicoParser.TryParse(sequence, request, out int consumed)) { /* request.* as usual */ }
+using Glyph11.Validation;
+
+var framing = BodyFramingDetector.DetectBodyFraming(request);
+// framing.Framing: None | ContentLength (framing.ContentLength bytes) | Chunked
+
+var responseFraming = BodyFramingDetector.DetectResponseBodyFraming(response, "GET"u8);
+// also UntilClose: a response with no framing runs to the end of the connection
 ```
 
-Use it when you want the fastest path to a `BinaryRequest` and validate elsewhere (or trust
-the source). For the hardened parser, use `Glyph11`.
+- `DetectResponseBodyFraming` needs the method of the request that produced the response. A
+  response to HEAD, a 1xx/204/304, and a 2xx to CONNECT have no body, whatever their headers
+  say.
+- Transfer-Encoding: chunked takes priority over Content-Length (RFC 9112 §6.1).
+- Content-Length fields and list elements must all state the same length, or the helpers throw
+  400. The hardened parser already refuses such requests; this protects messages from other
+  parsers too.
+- A length too large for a `long` frames as `long.MaxValue`, never as "no body". Your body-size
+  limit then refuses it.
+- `ContentLengthBodyReader.ParseContentLength(request)` returns the same length directly (-1
+  when absent). `HasCompleteBody(body, length)` tells you whether the whole body has arrived.
 
 ## Chunked bodies
 
-Both `Glyph11` and `Glyph11.Pico` (which depends on `Glyph11`) decode chunked
-transfer-encoding via `ChunkedBodyStream`; `Glyph11.Native` exposes the C decoder.
+`ChunkedBodyStream` decodes chunked transfer-encoding incrementally, from a span or a
+`ReadOnlySequence<byte>`:
 
 ```csharp
-using Glyph11.Parser;
+var decoder = new ChunkedBodyStream(limits);   // or new ChunkedBodyStream() for ParserLimits.Default
 
-var stream = new ChunkedBodyStream();
-var r = stream.TryReadChunk(input, out int consumed, out int dataOffset, out int dataLength);
-// r: Chunk | Completed | NeedMoreData | Error
+switch (decoder.TryReadChunk(input, out int consumed, out int dataOffset, out int dataLength))
+{
+    case ChunkResult.Chunk:        // input[dataOffset..][..dataLength] is body data; advance by consumed
+    case ChunkResult.Completed:    // the last chunk and trailers are done; advance by consumed
+    case ChunkResult.NeedMoreData: // nothing consumed: present the same bytes plus more next time
+        break;
+}
+// Malformed framing throws HttpParseException.
 ```
+
+- Data is handed out as it arrives. A `Chunk` may be part of a chunk, so a peer's declared chunk
+  size never decides how much you buffer.
+- The trailer section is capped by `ParserLimits.MaxTotalTrailerBytes` (exceeding it throws 431).
+- Chunk sizes of more than 16 hex digits, or of 2^63 and above, are refused.
+
+`ChunkedBodyValidator.TryValidate(body, out int consumed)` checks a complete chunked body in one
+call.
+
+## Limits and options
+
+`ParserLimits` is a record struct. Change any field with `with`:
+
+```csharp
+var limits = ParserLimits.Default with { MaxHeaderCount = 50, AllowBareLf = true };
+```
+
+| Field | Default | Exceeded |
+|---|---:|---|
+| `MaxHeaderCount` | 100 | 431 |
+| `MaxHeaderNameLength` | 256 | 431 |
+| `MaxHeaderValueLength` | 8192 | 431 |
+| `MaxUrlLength` | 8192 | 431 |
+| `MaxQueryParameterCount` | 128 | 431 |
+| `MaxMethodLength` | 16 | 400 |
+| `MaxReasonPhraseLength` (responses) | 512 | 431 |
+| `MaxTotalHeaderBytes` | 1 MiB | 431 |
+| `MaxTotalTrailerBytes` | 16 KiB | 431 |
+| `AllowBareLf` | `false` | |
+
+`AllowBareLf` accepts messages that use a bare LF as the line terminator **throughout**
+(RFC 9112 §2.2). A message that mixes CRLF and bare LF is still rejected, because mixed endings
+are where two parsers disagree about where a line ends.
+
+## Two parsers
+
+- **`UltraHardenedParser`** validates everything, in the same pass that parses.
+  - **Grammar:** the request line, tokens, header names and values. It refuses CTLs, obs-fold,
+    whitespace before a colon and bare LF.
+  - **HTTP version:** malformed is 400; well-formed but unsupported is 505.
+  - **Request smuggling:** Transfer-Encoding together with Content-Length, conflicting or
+    malformed Content-Length, and obfuscated Transfer-Encoding.
+  - **Host:** exactly one, matching the RFC 3986 host grammar (reg-name or IPv6 literal, with
+    an optional port of at most 65535).
+  - **Path:** traversal, double encoding, encoded NUL and overlong UTF-8.
+  - **Responses:** a status code outside 100-599.
+  - **Limits:** everything in the table above.
+
+  [SECURITY.md](SECURITY.md) describes every check.
+- **`FlexibleParser`** does minimal validation, for input you already trust. It has the same
+  `TryParseRequestHeader` shape and no limits argument.
+
+## Migrating to 0.4.0
+
+- `TryExtractFullHeaderROM`, `TryExtractFullHeaderValidated`, the response equivalents and
+  `FlexibleParser`'s are obsolete. They reported one less than the bytes consumed, which is why
+  callers added 1. Switch to `TryParseRequestHeader` / `TryParseResponseHeader` and **drop the
+  `+ 1`**.
+- The parser clears its target. A `Clear()` before each call is no longer needed, and still
+  harmless.
+- HTTP version errors: a malformed version is now 400 (it was 505); 505 is for well-formed
+  versions other than 1.0/1.1.
+- `ChunkedBodyStream` may return a chunk in parts. Callers that append each `Chunk` and advance
+  by `consumed` need no change.
+- The framing helpers can throw on conflicting Content-Length fields.
+
+## Tests
+
+`dotnet test tests/Tests/Tests.csproj` runs the xUnit suite: parsing, limits, smuggling vectors,
+chunked decoding (byte by byte and at random split points) and every entry point with contiguous
+and multi-segment input. Property tests compare Content-Length saturation and chunk-size limits
+with `BigInteger`, and IP-literals with a regular expression transcribed from the RFC 3986
+grammar.
 
 ## Benchmarks
 
-`linux-x64`, best-of-5, ns/op (lower is better). `Glyph11.Native` / `Glyph11.Pico` are the
-AVX2 / SSE4.2 native builds. The same tables and usage docs are at
-**<https://dotnet-web-stack.github.io/Glyph11/>**; the harnesses are in
-[`bench/`](bench).
+`linux-x64`, best-of-5, ns/op (lower is better). The same tables and usage docs are at
+**<https://dotnet-web-stack.github.io/Glyph11/>**, and the harness is in
+[`Benchmarks/`](Benchmarks).
 
-**Request header parsing** — contiguous buffer (→ `BinaryRequest` for Glyph11 / Pico; raw spans for Native):
+**Request header parsing**, contiguous buffer (→ `BinaryRequest`):
 
-| Payload | Glyph11 | Glyph11.Native | Glyph11.Pico |
-|---|---:|---:|---:|
-| ~95 B   | 120 ns  | 99 ns   | **80 ns** |
-| 4 KB    | 750 ns  | 502 ns  | **487 ns** |
-| 32 KB   | 5251 ns | 3752 ns | **3370 ns** |
+| Payload | Glyph11 |
+|---|---:|
+| ~95 B   | 120 ns  |
+| 4 KB    | 750 ns  |
+| 32 KB   | 5251 ns |
 
-**Multi-segment** — fragmented request (3 segments) linearized into a buffer per request, then parsed:
+**Multi-segment**, a fragmented request (3 segments); only the header block is linearized:
 
-| Payload | Glyph11 | Glyph11.Native | Glyph11.Pico |
-|---|---:|---:|---:|
-| ~95 B   | 245 ns  | **116 ns** | 118 ns |
-| 4 KB    | 1258 ns | 721 ns  | **674 ns** |
-| 32 KB   | 8695 ns | 4969 ns | **4627 ns** |
+| Payload | Glyph11 |
+|---|---:|
+| ~95 B   | 245 ns  |
+| 4 KB    | 1258 ns |
+| 32 KB   | 8695 ns |
 
-**Chunked body decoding** (decoded size; `Glyph11.Pico` reuses `Glyph11`'s `ChunkedBodyStream`, so they share a column):
+**Chunked body decoding** (decoded size):
 
-| Decoded | Glyph11 / Pico | Glyph11.Native |
-|---|---:|---:|
-| 256 B  | 19 ns  | 21 ns  |
-| 4 KB   | 115 ns | **70 ns** |
-| 32 KB  | 826 ns | **808 ns** |
+| Decoded | Glyph11 |
+|---|---:|
+| 256 B  | 19 ns  |
+| 4 KB   | 115 ns |
+| 32 KB  | 826 ns |
 
-`Glyph11.Pico` is the fastest to a full `BinaryRequest` — it skips glyph11's hardening, so
-pick it only when you validate elsewhere.
-
-## Kotlin / JVM
-
-The C core is also reachable from the JVM via Panama FFM (JDK 21+) — see
-[`bindings/kotlin`](bindings/kotlin). Not a NuGet package.
-
-## Build the native cores
-
-```sh
-cmake -S core -B core/build-rel -DGLYPH11_BUILD_TESTS=OFF     # libglyph11
-cmake --build core/build-rel
-cmake -S bindings/dotnet/Glyph11.Pico/native -B pico-build    # libglyph11pico
-cmake --build pico-build
-```
-
-MIT licensed. `Glyph11.Pico` bundles picohttpparser (MIT/Perl, © Kazuho Oku et al.).
+MIT licensed.
