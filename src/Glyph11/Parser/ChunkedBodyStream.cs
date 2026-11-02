@@ -93,15 +93,12 @@ public struct ChunkedBodyStream
 
                     if (IsHexDigit(input[pos]))
                     {
-                        if (_digitCount >= 16)
+                        // At most 16 digits, and none may take the size to 2^63 or more: a long
+                        // cannot hold that, and the shift would turn it negative.
+                        if (_digitCount >= 16 || _chunkSize > (long.MaxValue >> 4))
                             throw new HttpParseException("Chunk size overflow.");
 
                         _chunkSize = (_chunkSize << 4) | (uint)HexVal(input[pos]);
-
-                        // A 16th digit can set the sign bit: sizes of 2^63 or more do not fit a long.
-                        if (_chunkSize < 0)
-                            throw new HttpParseException("Chunk size overflow.");
-
                         _digitCount++;
                         pos++;
                         continue;
@@ -317,11 +314,11 @@ public struct ChunkedBodyStream
 
                     if (IsHexDigit(b))
                     {
-                        if (_digitCount >= 16)
+                        // At most 16 digits, and none may take the size to 2^63 or more: it would
+                        // turn negative and reach Slice as a negative length.
+                        if (_digitCount >= 16 || _chunkSize > (long.MaxValue >> 4))
                             throw new HttpParseException("Chunk size overflow.");
                         _chunkSize = (_chunkSize << 4) | (uint)HexVal(b);
-                        if (_chunkSize < 0) // 2^63 or more: would reach Slice as a negative length
-                            throw new HttpParseException("Chunk size overflow.");
                         _digitCount++;
                         reader.Advance(1);
                         continue;

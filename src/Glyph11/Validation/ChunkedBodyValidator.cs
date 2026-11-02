@@ -42,15 +42,12 @@ public static class ChunkedBodyValidator
             int digitCount = 0;
             while (pos < body.Length && IsHexDigit(body[pos]))
             {
-                if (digitCount >= 16) // overflow guard: 16 hex digits = 64 bits
+                // At most 16 digits, and none may take the size to 2^63 or more: a long cannot
+                // hold that, and the shift would turn it negative.
+                if (digitCount >= 16 || chunkSize > (long.MaxValue >> 4))
                     throw new HttpParseException("Chunk size overflow.");
 
                 chunkSize = (chunkSize << 4) | (uint)HexVal(body[pos]);
-
-                // A 16th digit can set the sign bit: sizes of 2^63 or more do not fit a long.
-                if (chunkSize < 0)
-                    throw new HttpParseException("Chunk size overflow.");
-
                 digitCount++;
                 pos++;
             }

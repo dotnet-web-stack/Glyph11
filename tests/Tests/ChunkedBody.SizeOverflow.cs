@@ -67,22 +67,18 @@ public class ChunkedBodySizeOverflowTests
         }
     }
 
-    public static IEnumerable<object[]> OverflowingBodies()
+    // The rows of issue #62's table (and the bare minimum, 2^63).
+    public static TheoryData<string> OverflowingBodies() => new()
     {
-        // The rows of issue #62's table (and the bare minimum, 2^63).
-        yield return new object[] { "8000000000000005\r\nhello\r\n0\r\n\r\n" };
-        yield return new object[] { "8000000000000000\r\n\r\n0\r\n\r\n" };
-        yield return new object[] { "fffffffffffffffe\r\n5\r\nhello\r\n0\r\n\r\n" };
-        yield return new object[] { "FFFFFFFFFFFFFFFF\r\n" };
-        yield return new object[] { "8000000000000000" };        // refused as soon as the 16th digit lands
-        yield return new object[] { "8000000000000000;ext=1\r\n" };
-    }
+        "8000000000000005\r\nhello\r\n0\r\n\r\n",
+        "8000000000000000\r\n\r\n0\r\n\r\n",
+        "fffffffffffffffe\r\n5\r\nhello\r\n0\r\n\r\n",
+        "FFFFFFFFFFFFFFFF\r\n",
+        "8000000000000000",        // refused as soon as the 16th digit lands
+        "8000000000000000;ext=1\r\n",
+    };
 
-    public static IEnumerable<object[]> Segmentations()
-    {
-        foreach (var segments in new[] { 1, 2, 3, 7, int.MaxValue })
-            yield return new object[] { segments };
-    }
+    public static TheoryData<int> Segmentations() => new() { 1, 2, 3, 7, int.MaxValue };
 
     // ---- span overload ----
 
@@ -145,6 +141,19 @@ public class ChunkedBodySizeOverflowTests
 
         Assert.True(ChunkedBodyValidator.TryValidate(input, out var consumed));
         Assert.Equal(input.Length, consumed);
+    }
+
+    // ---- ... but a 17th digit is refused even when the value would fit (leading zeros) ----
+
+    [Fact]
+    public void SeventeenDigits_AreRefused_EvenWhenTheValueFits()
+    {
+        var input = B("00000000000000005\r\nhello\r\n0\r\n\r\n");
+
+        Assert.Equal(Overflow, Assert.Throws<HttpParseException>(() => ReadAllSpan(input)).Message);
+        foreach (var segments in new[] { 1, 3, input.Length })
+            Assert.Equal(Overflow, Assert.Throws<HttpParseException>(() => ReadAllSequence(input, segments)).Message);
+        Assert.Equal(Overflow, Assert.Throws<HttpParseException>(() => ChunkedBodyValidator.TryValidate(input, out _)).Message);
     }
 
     // ---- long.MaxValue itself is a legal size: accept the size line and wait for the data ----
