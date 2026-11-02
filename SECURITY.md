@@ -121,6 +121,7 @@ All limits are configurable via `ParserLimits`:
 | `MaxQueryParameterCount` | 128 | Query parameter flooding |
 | `MaxMethodLength` | 16 | Oversized method strings |
 | `MaxTotalHeaderBytes` | 1048576 | Total header section DoS |
+| `MaxTotalTrailerBytes` | 16384 | Endless chunked trailer section (applies to `ChunkedBodyStream` / `ChunkedBodyValidator`) |
 
 ---
 

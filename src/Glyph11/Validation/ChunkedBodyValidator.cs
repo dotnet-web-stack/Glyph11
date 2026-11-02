@@ -1,3 +1,4 @@
+using Glyph11.Parser;
 
 namespace Glyph11.Validation;
 
@@ -9,12 +10,23 @@ public static class ChunkedBodyValidator
     private const int MaxChunkExtensionBytes = 4096;
 
     /// <summary>
-    /// Validates chunked body format.
+    /// Validates chunked body format under <see cref="ParserLimits.Default"/>.
     /// Returns true if valid and complete.
     /// Returns false if incomplete (need more data).
     /// Throws <see cref="HttpParseException"/> if malformed.
     /// </summary>
     public static bool TryValidate(ReadOnlySpan<byte> body, out int bytesConsumed)
+        => TryValidate(body, ParserLimits.Default, out bytesConsumed);
+
+    /// <summary>
+    /// Validates chunked body format, enforcing <paramref name="limits"/> (today:
+    /// <see cref="ParserLimits.MaxTotalTrailerBytes"/>).
+    /// Returns true if valid and complete.
+    /// Returns false if incomplete (need more data).
+    /// Throws <see cref="HttpParseException"/> if malformed, or with status 431 when the trailer
+    /// section exceeds the limit.
+    /// </summary>
+    public static bool TryValidate(ReadOnlySpan<byte> body, in ParserLimits limits, out int bytesConsumed)
     {
         bytesConsumed = 0;
         int pos = 0;
@@ -110,6 +122,8 @@ public static class ChunkedBodyValidator
             // --- Last chunk (size == 0): parse optional trailers ---
             if (chunkSize == 0)
             {
+                int trailerStart = pos;
+
                 // Trailers: zero or more header lines, terminated by CRLF
                 while (true)
                 {
@@ -144,6 +158,15 @@ public static class ChunkedBodyValidator
 
                         pos++;
                     }
+
+                    // Cap the trailer section — the bytes seen so far, finished or not, so an
+                    // endless one is refused rather than waited on. A CR that ends the input may
+                    // be half of the final CRLF, so it is not counted yet.
+                    int seen = pos - trailerStart;
+                    if (!foundCrlf && body[pos - 1] == (byte)'\r')
+                        seen--;
+                    if (seen > limits.MaxTotalTrailerBytes)
+                        throw new HttpParseException("Chunked trailer section exceeds limit.", statusCode: 431);
 
                     if (!foundCrlf)
                         return false; // incomplete trailer line

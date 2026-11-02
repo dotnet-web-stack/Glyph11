@@ -145,6 +145,10 @@ var r = stream.TryReadChunk(input, out int consumed, out int dataOffset, out int
 // r: Chunk | Completed | NeedMoreData | Error
 ```
 
+Payload is handed out as it arrives (a `Chunk` result may be part of a chunk), so a peer's
+declared chunk size never decides how much you buffer; the trailer section is capped by
+`ParserLimits.MaxTotalTrailerBytes` (16 KiB by default; `new ChunkedBodyStream(limits)`).
+
 ## Benchmarks
 
 `linux-x64`, best-of-5, ns/op (lower is better). `Glyph11.Native` / `Glyph11.Pico` are the

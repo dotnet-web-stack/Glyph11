@@ -36,6 +36,14 @@ public readonly record struct ParserLimits
     /// <summary>Maximum total size of the header block including request line and terminators (default 1048576).</summary>
     public int MaxTotalHeaderBytes { get; init; }
 
+    /// <summary>
+    /// Maximum total size of a chunked body's trailer section in bytes: every trailer field line
+    /// after the last chunk, including its CRLF (default 16384). Enforced by
+    /// <see cref="ChunkedBodyStream"/> and <see cref="Validation.ChunkedBodyValidator"/>; exceeding
+    /// it is a 431, like an oversized header block.
+    /// </summary>
+    public int MaxTotalTrailerBytes { get; init; }
+
     /// <summary>Returns a <see cref="ParserLimits"/> with safe production defaults.</summary>
     public static ParserLimits Default => new()
     {
@@ -46,6 +54,7 @@ public readonly record struct ParserLimits
         MaxQueryParameterCount = 128,
         MaxMethodLength = 16,
         MaxReasonPhraseLength = 512,
-        MaxTotalHeaderBytes = 1_048_576
+        MaxTotalHeaderBytes = 1_048_576,
+        MaxTotalTrailerBytes = 16_384
     };
 }
