@@ -36,15 +36,25 @@ public static partial class UltraHardenedParser
         var span = input.Span;
 
         int headerEnd = span.IndexOf(ParserConstants.CrlfCrlf);
-        if (headerEnd < 0) return false;
 
-        int totalHeaderBytes = headerEnd + 4;
+        // ---- No CRLFCRLF yet, or bare LF allowed: off the hot path — RFC 9112 §2.2 ----
+        bool bareLf = false;
+        if (headerEnd < 0 || limits.AllowBareLf)
+        {
+            headerEnd = LocateHeaderEnd(span, headerEnd, limits.AllowBareLf, out bareLf);
+            if (headerEnd < 0) return false;
+        }
+
+        // A bare-LF message ends in LFLF and splits its lines on LF; every other one, CRLF.
+        ReadOnlySpan<byte> eol = bareLf ? Lf : ParserConstants.Crlf;
+
+        int totalHeaderBytes = headerEnd + 2 * eol.Length;
         if (totalHeaderBytes > limits.MaxTotalHeaderBytes)
             throw new HttpParseException("Total header size exceeds limit.", statusCode: 431);
 
         // ---- Status line: HTTP-version SP status-code SP [ reason-phrase ] CRLF — RFC 9112 §4 ----
 
-        int statusLineEnd = span.IndexOf(ParserConstants.Crlf);
+        int statusLineEnd = span.IndexOf(eol);
         if (statusLineEnd < 0)
             throw new HttpParseException("Invalid HTTP/1.1 status line.");
 
@@ -118,7 +128,7 @@ public static partial class UltraHardenedParser
 
         // ---- Headers (structural parse + inline semantic checks) ----
 
-        int lineStart = statusLineEnd + 2;
+        int lineStart = statusLineEnd + eol.Length;
         int headerCount = 0;
 
         // Semantic state tracked across headers
@@ -128,7 +138,7 @@ public static partial class UltraHardenedParser
 
         while (true)
         {
-            int lineLen = span[lineStart..].IndexOf(ParserConstants.Crlf);
+            int lineLen = span[lineStart..].IndexOf(eol);
             if (lineLen < 0)
                 throw new HttpParseException("Invalid headers.");
 
@@ -223,7 +233,7 @@ public static partial class UltraHardenedParser
                     throw new HttpParseException("Invalid Transfer-Encoding value; only 'chunked' is accepted.");
             }
 
-            lineStart += lineLen + 2;
+            lineStart += lineLen + eol.Length;
         }
 
         // ---- Post-loop cross-header semantic checks ----

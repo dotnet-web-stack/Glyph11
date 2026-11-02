@@ -34,15 +34,25 @@ public static partial class UltraHardenedParser
         var span = input.Span;
 
         int headerEnd = span.IndexOf(ParserConstants.CrlfCrlf);
-        if (headerEnd < 0) return false;
 
-        int totalHeaderBytes = headerEnd + 4;
+        // ---- No CRLFCRLF yet, or bare LF allowed: off the hot path — RFC 9112 §2.2 ----
+        bool bareLf = false;
+        if (headerEnd < 0 || limits.AllowBareLf)
+        {
+            headerEnd = LocateHeaderEnd(span, headerEnd, limits.AllowBareLf, out bareLf);
+            if (headerEnd < 0) return false;
+        }
+
+        // A bare-LF message ends in LFLF and splits its lines on LF; every other one, CRLF.
+        ReadOnlySpan<byte> eol = bareLf ? Lf : ParserConstants.Crlf;
+
+        int totalHeaderBytes = headerEnd + 2 * eol.Length;
         if (totalHeaderBytes > limits.MaxTotalHeaderBytes)
             throw new HttpParseException("Total header size exceeds limit.", statusCode: 431);
 
         // ---- Request line: METHOD SP URL SP VERSION CRLF ----
 
-        int requestLineEnd = span.IndexOf(ParserConstants.Crlf);
+        int requestLineEnd = span.IndexOf(eol);
         if (requestLineEnd < 0)
             throw new HttpParseException("Invalid HTTP/1.1 request line.");
 
@@ -165,7 +175,7 @@ public static partial class UltraHardenedParser
 
         // ---- Headers (structural parse + inline semantic checks) ----
 
-        int lineStart = requestLineEnd + 2;
+        int lineStart = requestLineEnd + eol.Length;
         int headerCount = 0;
 
         // Semantic state tracked across headers
@@ -176,7 +186,7 @@ public static partial class UltraHardenedParser
 
         while (true)
         {
-            int lineLen = span[lineStart..].IndexOf(ParserConstants.Crlf);
+            int lineLen = span[lineStart..].IndexOf(eol);
             if (lineLen < 0)
                 throw new HttpParseException("Invalid headers.");
 
@@ -279,7 +289,7 @@ public static partial class UltraHardenedParser
                     throw new HttpParseException("Invalid Host header: contains '@' or '/'.");
             }
 
-            lineStart += lineLen + 2;
+            lineStart += lineLen + eol.Length;
         }
 
         // ---- Post-loop cross-header semantic checks ----

@@ -41,10 +41,11 @@ public partial class UltraHardenedParserTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void ReturnsFalse_BareLineFeedInsteadOfCrlf(bool multi)
+    public void Throws_BareLineFeedInsteadOfCrlf(bool multi)
     {
-        var (ok, _) = Parse("GET / HTTP/1.1\nHost: x\n\n", multi);
-        Assert.False(ok);
+        // Not "incomplete": no later byte can make a bare-LF message valid (see #59).
+        Assert.Throws<HttpParseException>(
+            () => Parse("GET / HTTP/1.1\nHost: x\n\n", multi));
     }
 
     // ================================================================

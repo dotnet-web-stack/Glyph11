@@ -17,9 +17,11 @@ These checks are enforced during `TryExtractFullHeaderValidated` / `TryExtractFu
 
 **Attack:** HTTP request smuggling via bare line feed (0x0A without preceding 0x0D). Some parsers accept bare LF as a line terminator while others require CRLF, creating parsing discrepancies.
 
-**RFC:** 9112 Section 2.2 — "A recipient of such a bare CR MUST consider that element to be invalid."
+**RFC:** 9112 Section 2.2 — "Although the line terminator for the start-line and fields is the sequence CRLF, a recipient MAY recognize a single LF as a line terminator and ignore any preceding CR."
 
-**Protection:** The parser checks each parsed line for bare LF (0x0A) using vectorized `IndexOf`. Any bare LF causes immediate rejection.
+**Protection:** By default only CRLF is accepted. The parser checks each parsed line for bare LF (0x0A) using vectorized `IndexOf`, and any bare LF causes immediate rejection. That includes a header section that has not finished arriving: once a bare LF is in the buffer no later byte can make the message valid, so the parser throws instead of returning "incomplete" — which would leave the caller waiting for a CRLFCRLF that never comes.
+
+**Opt-in leniency:** `ParserLimits.AllowBareLf = true` accepts a message that uses bare LF *throughout*, as the RFC permits. The message's first line terminator decides its style, and a message that mixes CRLF and bare LF is still rejected — the mix, not LF itself, is where two parsers disagree about where a line ended. Meant for a client reading responses from an origin it chose; never enable it on a server in front of or behind other HTTP implementations.
 
 **CVEs prevented:** CVE-2023-30589 (Node.js), CVE-2025-58056 (Netty), CVE-2019-16785 (Waitress).
 

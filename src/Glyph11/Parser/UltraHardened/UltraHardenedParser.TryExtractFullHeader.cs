@@ -29,9 +29,9 @@ public static partial class UltraHardenedParser
             return TryExtractFullHeaderROM(ref singleMemorySegment, request, in limits, out bytesReadCount);
         }
 
-        // Check for header completeness before allocating
+        // Check for header completeness before allocating (throws if bare LF already settles it)
         var reader = new SequenceReader<byte>(input);
-        if (!reader.TryReadTo(out ReadOnlySequence<byte> _, ParserConstants.CrlfCrlf, advancePastDelimiter: true))
+        if (!TryReadPastHeaderEnd(ref reader, in limits))
         {
             bytesReadCount = -1;
             return false;
