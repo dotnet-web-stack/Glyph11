@@ -138,17 +138,20 @@ public class ChunkedBodyStreamLimitsTests
         return (B(wire.ToString()), B(body.ToString()));
     }
 
-    public static IEnumerable<object[]> Bodies()
+    public static TheoryData<string[], string> Bodies()
     {
-        yield return new object[] { new[] { "Hello" }, "" };
-        yield return new object[] { new[] { "Hello", " World" }, "" };
-        yield return new object[] { new[] { "0123456789", "abc" }, "A: 1\r\nB: 2\r\n" };
-        yield return new object[] { new[] { new string('Z', 1000) }, "Trailer: value\r\n" };
-
         var rng = new Random(42);
         var many = Enumerable.Range(0, 20)
             .Select(i => new string((char)('a' + i), rng.Next(1, 300))).ToArray();
-        yield return new object[] { many, "" };
+
+        return new TheoryData<string[], string>
+        {
+            { ["Hello"], "" },
+            { ["Hello", " World"], "" },
+            { ["0123456789", "abc"], "A: 1\r\nB: 2\r\n" },
+            { [new string('Z', 1000)], "Trailer: value\r\n" },
+            { many, "" },
+        };
     }
 
     // =====================================================================
