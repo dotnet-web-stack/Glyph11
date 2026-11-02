@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using Glyph11;
 using Glyph11.Parser.UltraHardened;
 
@@ -193,5 +195,118 @@ public partial class UltraHardenedParserTests
             }
         });
         Assert.Equal(400, ex.StatusCode);
+    }
+
+    // ================================================================
+    // IP-literal against an independent reading of RFC 3986 §3.2.2
+    // ================================================================
+
+    [Fact]
+    public void IPLiteral_AcceptedExactlyWhenRfc3986Allows()
+    {
+        var rng = new Random(20261102);
+        int valid = 0;
+        for (int i = 0; i < 4000; i++)
+        {
+            string address = RandomIPv6Literal(rng);
+            bool expected = Rfc3986IPv6Address.IsMatch(address);
+            if (expected) valid++;
+
+            _request.Clear();
+            bool accepted;
+            try { accepted = Parse($"GET / HTTP/1.1\r\nHost: [{address}]\r\n\r\n", i % 2 == 1).success; }
+            catch (HttpParseException) { accepted = false; }
+
+            Assert.True(expected == accepted,
+                $"[{address}]: RFC 3986 says {(expected ? "valid" : "invalid")}, the parser {(accepted ? "accepted" : "refused")} it");
+        }
+
+        // Both sides of the grammar must be well represented for the comparison to mean anything.
+        Assert.InRange(valid, 1000, 3000);
+    }
+
+    // The IPv6address ABNF, transcribed rule by rule: the reference the parser is checked against.
+    private static readonly Regex Rfc3986IPv6Address = BuildRfc3986IPv6Address();
+
+    private static Regex BuildRfc3986IPv6Address()
+    {
+        const string h16 = "[0-9A-Fa-f]{1,4}";
+        const string decOctet = "(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])";
+        string ls32 = $@"(?:{h16}:{h16}|{decOctet}\.{decOctet}\.{decOctet}\.{decOctet})";
+        string Times(int n) => $"(?:{h16}:){{{n}}}";                 // n( h16 ":" )
+        string Prefix(int n) => $"(?:(?:{h16}:){{0,{n}}}{h16})?";     // [ *n( h16 ":" ) h16 ]
+        string[] forms =
+        [
+            Times(6) + ls32,
+            "::" + Times(5) + ls32,
+            Prefix(0) + "::" + Times(4) + ls32,
+            Prefix(1) + "::" + Times(3) + ls32,
+            Prefix(2) + "::" + Times(2) + ls32,
+            Prefix(3) + "::" + h16 + ":" + ls32,
+            Prefix(4) + "::" + ls32,
+            Prefix(5) + "::" + h16,
+            Prefix(6) + "::",
+        ];
+        return new Regex(@"\A(?:" + string.Join("|", forms) + @")\z", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+    }
+
+    // A valid address in one of the nine forms, then - half the time - one or two random edits,
+    // which usually but not always break it. Octets include values above 255 and leading zeros.
+    private static string RandomIPv6Literal(Random rng)
+    {
+        string H16() => RandomHexDigits(rng, rng.Next(1, 5));
+        string Octet() => rng.Next(5) switch
+        {
+            0 => rng.Next(0, 10).ToString(CultureInfo.InvariantCulture),
+            1 => rng.Next(10, 100).ToString(CultureInfo.InvariantCulture),
+            2 => rng.Next(100, 256).ToString(CultureInfo.InvariantCulture),
+            3 => rng.Next(256, 1000).ToString(CultureInfo.InvariantCulture),
+            _ => "0" + rng.Next(0, 100).ToString(CultureInfo.InvariantCulture),
+        };
+        string Ls32() => rng.Next(3) == 0 ? $"{Octet()}.{Octet()}.{Octet()}.{Octet()}" : $"{H16()}:{H16()}";
+        string Times(int n) => string.Concat(Enumerable.Range(0, n).Select(_ => H16() + ":"));
+        string Prefix(int n) => string.Join(":", Enumerable.Range(0, rng.Next(0, n + 2)).Select(_ => H16()));
+
+        string address = rng.Next(9) switch
+        {
+            0 => Times(6) + Ls32(),
+            1 => "::" + Times(5) + Ls32(),
+            2 => Prefix(0) + "::" + Times(4) + Ls32(),
+            3 => Prefix(1) + "::" + Times(3) + Ls32(),
+            4 => Prefix(2) + "::" + Times(2) + Ls32(),
+            5 => Prefix(3) + "::" + H16() + ":" + Ls32(),
+            6 => Prefix(4) + "::" + Ls32(),
+            7 => Prefix(5) + "::" + H16(),
+            _ => Prefix(6) + "::",
+        };
+
+        if (rng.Next(2) == 0)
+            for (int edits = rng.Next(1, 3); edits > 0; edits--)
+                address = MutateOnce(address, rng);
+        return address;
+    }
+
+    private static string MutateOnce(string s, Random rng)
+    {
+        const string alphabet = ":.0123456789abcdefABCDEFg%";
+        string c = alphabet[rng.Next(alphabet.Length)].ToString();
+        if (s.Length == 0)
+            return c;
+        int at = rng.Next(s.Length);
+        return rng.Next(3) switch
+        {
+            0 => s.Insert(at, c),
+            1 => s.Remove(at, 1),
+            _ => s.Remove(at, 1).Insert(at, c),
+        };
+    }
+
+    private static string RandomHexDigits(Random rng, int count)
+    {
+        const string digits = "0123456789abcdefABCDEF";
+        var chars = new char[count];
+        for (int i = 0; i < count; i++)
+            chars[i] = digits[rng.Next(digits.Length)];
+        return new string(chars);
     }
 }
