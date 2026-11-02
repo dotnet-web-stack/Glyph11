@@ -307,6 +307,23 @@ public class UltraHardenedParserBareLfTests : IDisposable
         Assert.True(ok);
     }
 
+    [Fact]
+    public void Lenient_CrlfSplitAcrossAnEmptySegment_IsACrlfMessage()
+    {
+        // The CR before the empty segment still makes the LF after it half of a CRLF.
+        var (ok, _) = ParseRequestSegments(Lenient, "GET / HTTP/1.1\r", "", "\nHost: x\r\n\r\n");
+        Assert.True(ok);
+    }
+
+    [Theory]
+    [InlineData(false), InlineData(true)]
+    public void Lenient_LfAsTheVeryFirstByte_IsAnEmptyRequestLine(bool multi)
+    {
+        // The first line ends before it starts: there is no request line to parse.
+        var ex = Assert.Throws<HttpParseException>(() => ParseRequest("\nGET / HTTP/1.1\nHost: x\n\n", multi, Lenient));
+        Assert.Equal(400, ex.StatusCode);
+    }
+
     // ================================================================
     // AllowBareLf: mixed line endings are still rejected
     // ================================================================
