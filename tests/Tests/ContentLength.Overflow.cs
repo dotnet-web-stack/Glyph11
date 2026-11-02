@@ -1,4 +1,6 @@
 using System.Buffers;
+using System.Globalization;
+using System.Numerics;
 using System.Text;
 using Glyph11.Parser;
 using Glyph11.Parser.FlexibleParser;
@@ -94,6 +96,32 @@ public class ContentLengthOverflowTests : IDisposable
         Assert.Equal(-1, ContentLengthBodyReader.ParseContentLength(_request));
     }
 
+    // Any decimal length frames as its value, or as long.MaxValue when a long cannot hold it. The
+    // expectation comes from BigInteger, independent of the helpers' arithmetic, and the cases crowd
+    // around long.MaxValue, where the saturation check decides.
+    [Fact]
+    public void AnyDecimalLength_FramesAsItsValue_SaturatingAtLongMax()
+    {
+        var rng = new Random(20261102);
+        for (int i = 0; i < 3000; i++)
+        {
+            string value = RandomDecimal(rng);
+            var exact = BigInteger.Parse(value, CultureInfo.InvariantCulture);
+            long expected = exact > long.MaxValue ? long.MaxValue : (long)exact;
+
+            _request.Clear();
+            Assert.True(ParseFlexible($"POST / HTTP/1.1\r\nHost: x\r\nContent-Length: {value}\r\n\r\n"));
+
+            var framing = BodyFramingDetector.DetectBodyFraming(_request);
+            Assert.True(expected == 0
+                    ? framing.Framing == BodyFraming.None
+                    : framing.Framing == BodyFraming.ContentLength && framing.ContentLength == expected,
+                $"Content-Length: {value} framed as {framing.Framing} {framing.ContentLength}, expected {expected}");
+            Assert.True(ContentLengthBodyReader.ParseContentLength(_request) == expected,
+                $"Content-Length: {value} read as {ContentLengthBodyReader.ParseContentLength(_request)}, expected {expected}");
+        }
+    }
+
     // ================================================================
     // Helpers
     // ================================================================
@@ -124,6 +152,22 @@ public class ContentLengthOverflowTests : IDisposable
 
         ReadOnlyMemory<byte> rom = bytes;
         return UltraHardenedParser.TryExtractFullResponseHeaderROM(ref rom, _response, in Defaults, out _);
+    }
+
+    private static string RandomDecimal(Random rng) => rng.Next(4) switch
+    {
+        0 => Digits(rng, rng.Next(1, 26)),                                            // 1 to 25 digits
+        1 => "92233720368547758" + Digits(rng, 2),                                    // 19 digits at the boundary
+        2 => (new BigInteger(long.MaxValue) + rng.Next(-1000, 1001)).ToString(CultureInfo.InvariantCulture),
+        _ => new string('0', rng.Next(1, 6)) + Digits(rng, rng.Next(1, 21)),          // leading zeros
+    };
+
+    private static string Digits(Random rng, int count)
+    {
+        var digits = new char[count];
+        for (int i = 0; i < count; i++)
+            digits[i] = (char)('0' + rng.Next(10));
+        return new string(digits);
     }
 
     private bool ParseFlexible(string raw)
