@@ -151,6 +151,8 @@ public static class BodyFramingDetector
 
         if (value.IsEmpty) return -1;
 
+        const long Limit = long.MaxValue / 10;   // any digit may follow a smaller value
+
         long result = 0;
         for (int j = 0; j < value.Length; j++)
         {
@@ -159,8 +161,8 @@ public static class BodyFramingDetector
             int digit = b - '0';
             // Saturate rather than fail: the validator accepts lengths up to ulong.MaxValue, and one
             // a long cannot hold must frame as too large, never as "no body". Every remaining byte is
-            // still checked to be a digit.
-            result = result > (long.MaxValue - digit) / 10 ? long.MaxValue : result * 10 + digit;
+            // still checked to be a digit. Below Limit this is a single comparison.
+            result = result < Limit || (result == Limit && digit <= 7) ? result * 10 + digit : long.MaxValue;
         }
 
         return result;

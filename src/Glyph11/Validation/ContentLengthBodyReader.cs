@@ -45,6 +45,7 @@ public static class ContentLengthBodyReader
                 trimmed = trimmed[..comma];
 
             // Parse digits
+            const long Limit = long.MaxValue / 10;   // any digit may follow a smaller value
             long result = 0;
             if (trimmed.IsEmpty) return -1;
             for (int j = 0; j < trimmed.Length; j++)
@@ -54,8 +55,8 @@ public static class ContentLengthBodyReader
                 int digit = b - '0';
                 // Saturate rather than fail: the validator accepts lengths up to ulong.MaxValue, and
                 // one a long cannot hold must read as too large, never as absent. Every remaining
-                // byte is still checked to be a digit.
-                result = result > (long.MaxValue - digit) / 10 ? long.MaxValue : result * 10 + digit;
+                // byte is still checked to be a digit. Below Limit this is a single comparison.
+                result = result < Limit || (result == Limit && digit <= 7) ? result * 10 + digit : long.MaxValue;
             }
 
             return result;
