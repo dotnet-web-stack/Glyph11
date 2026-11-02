@@ -9,10 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <!-- The three packages the docs-site benchmark compares. -->
         <ProjectReference Include="..\src\Glyph11\Glyph11.csproj" />
-        <ProjectReference Include="..\bindings\dotnet\Glyph11.Native\Glyph11.Native.csproj" />
-        <ProjectReference Include="..\bindings\dotnet\Glyph11.Pico\Glyph11.Pico.csproj" />
     </ItemGroup>
 
 </Project>

@@ -1,25 +1,16 @@
-// Reproduces the benchmark tables shown on the docs site: the three packages
-// (Glyph11 managed, Glyph11.Native, Glyph11.Pico) on contiguous request parsing,
-// multi-segment request parsing, and chunked-body decoding. Best-of-5, ns/op.
+// Reproduces the benchmark tables shown on the docs site: Glyph11 on contiguous
+// request parsing, multi-segment request parsing, and chunked-body decoding.
+// Best-of-5, ns/op.
 //
-//   # build the native cores, then point at them and run:
-//   cmake -S core -B core/build -DGLYPH11_BUILD_TESTS=OFF && cmake --build core/build
-//   cmake -S bindings/dotnet/Glyph11.Pico/native -B pico-build && cmake --build pico-build
-//   GLYPH11_NATIVE_PATH="$PWD/core/build/libglyph11.so" \
-//   GLYPH11_PICO_NATIVE_PATH="$PWD/pico-build/libglyph11pico.so" \
-//     dotnet run -c Release --project Benchmarks
-//
-// (Glyph11 — pure managed — needs no native library.)
+//   dotnet run -c Release --project Benchmarks
 
 using System.Buffers;
 using System.Diagnostics;
-using Glyph11.Native;
-using Glyph11.Pico;
 using Glyph11.Protocol;
 using Glyph11.Parser;
 using Glyph11.Parser.UltraHardened;
 
-// ---- payloads (identical bytes for every parser) ----
+// ---- payloads (identical bytes to the docs-site tables) ----
 byte[] small = Payloads.Small;
 (string label, byte[] bytes)[] requests =
 {
@@ -36,13 +27,7 @@ byte[] small = Payloads.Small;
 
 // ---- policy + reusable storage (no per-request allocation in the parse itself) ----
 var managedLimits = ParserLimits.Default with { MaxHeaderCount = 200, MaxTotalHeaderBytes = 64 * 1024 };
-var nativeLimits = Glyph11Limits.Default;
-nativeLimits.MaxHeaderCount = 200;
-nativeLimits.MaxTotalHeaderBytes = 64 * 1024;
 
-var headers = new Glyph11Field[256];
-var query = new Glyph11Field[256];
-var picoRequest = new BinaryRequest();
 var managedRequest = new BinaryRequest();
 var chunkOutput = new byte[64 * 1024];
 
@@ -55,9 +40,7 @@ Table(requests, (label, bytes) =>
     var rom = (ReadOnlyMemory<byte>)bytes;
     long it = Iters(bytes.Length);
     double glyph = Best(it, () => { managedRequest.Clear(); var r = rom; UltraHardenedParser.TryExtractFullHeaderROM(ref r, managedRequest, in managedLimits, out _); });
-    double native = Best(it, () => Glyph11Parser.Parse(bytes, headers, query, nativeLimits, out _));
-    double pico = Best(it, () => PicoParser.TryParse(rom, picoRequest, out _));
-    return (glyph, native, pico);
+    return glyph;
 });
 
 // ---- multi-segment request parsing (3 segments, linearized per request, then parsed) ----
@@ -65,34 +48,27 @@ Console.WriteLine("\nRequest header parsing — multi-segment");
 Table(requests, (label, bytes) =>
 {
     var seq = ThreeSegments(bytes);
-    int len = bytes.Length;
-    long it = Iters(len);
+    long it = Iters(bytes.Length);
     double glyph = Best(it, () => { managedRequest.Clear(); var s = seq; UltraHardenedParser.TryExtractFullHeaderValidated(ref s, managedRequest, in managedLimits, out _); });
-    double native = Best(it, () => { var buf = new byte[len]; seq.CopyTo(buf); Glyph11Parser.Parse(buf, headers, query, nativeLimits, out _); });
-    double pico = Best(it, () => { var buf = new byte[len]; seq.CopyTo(buf); PicoParser.TryParse(buf, picoRequest, out _); });
-    return (glyph, native, pico);
+    return glyph;
 });
 
-// ---- chunked body decoding (Glyph11 == Pico, which reuses ChunkedBodyStream) ----
-Console.WriteLine("\nChunked body decoding (Glyph11 / Pico share the decoder)");
-Console.WriteLine($"  {"decoded",-8}{"Glyph11/Pico",16}{"Glyph11.Native",16}");
+// ---- chunked body decoding ----
+Console.WriteLine("\nChunked body decoding");
+Console.WriteLine($"  {"decoded",-8}{"Glyph11",13}");
 foreach (var (label, body) in chunked)
 {
     long it = body.Length < 4096 ? 1_000_000 : body.Length < 32_768 ? 300_000 : 50_000;
     double glyph = Best(it, () => DecodeManaged(body, chunkOutput));
-    double native = Best(it, () => DecodeNative(body, chunkOutput));
-    Console.WriteLine($"  {label,-8}{glyph,13:F0} ns{native,13:F0} ns");
+    Console.WriteLine($"  {label,-8}{glyph,10:F0} ns");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-void Table((string label, byte[] bytes)[] cases, Func<string, byte[], (double glyph, double native, double pico)> run)
+void Table((string label, byte[] bytes)[] cases, Func<string, byte[], double> run)
 {
-    Console.WriteLine($"  {"payload",-8}{"Glyph11",13}{"Glyph11.Native",17}{"Glyph11.Pico",15}");
+    Console.WriteLine($"  {"payload",-8}{"Glyph11",13}");
     foreach (var (label, bytes) in cases)
-    {
-        var (g, n, p) = run(label, bytes);
-        Console.WriteLine($"  {label,-8}{g,10:F0} ns{n,14:F0} ns{p,12:F0} ns");
-    }
+        Console.WriteLine($"  {label,-8}{run(label, bytes),10:F0} ns");
 }
 
 static void DecodeManaged(byte[] body, byte[] output)
@@ -107,12 +83,6 @@ static void DecodeManaged(byte[] body, byte[] output)
         outOff += dataLen;
         inOff += consumed;
     }
-}
-
-static void DecodeNative(byte[] body, byte[] output)
-{
-    Glyph11Chunked.Init(out var decoder);
-    Glyph11Chunked.Decode(ref decoder, body, output, out _, out _);
 }
 
 // best of N timed trials (after warmup) — filters scheduling / turbo interference
