@@ -41,7 +41,7 @@ internal static class ContentLengthFields
             if (!element.IsEmpty)
             {
                 sawElement = true;
-                Merge(ref length, BodyFramingDetector.ParseContentLengthDigits(element));
+                Merge(ref length, BodyFramingDetector.ParseDecimalDigits(element));
             }
 
             if (comma < 0)

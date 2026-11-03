@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Glyph11.Parser;
 using Glyph11.Protocol;
 
@@ -100,6 +101,7 @@ public static class BodyFramingDetector
     /// (<see cref="ContentLengthFields.Absent"/> when there are none).
     /// </summary>
     /// <exception cref="HttpParseException">The Content-Length fields disagree.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static long ScanFramingFields(KeyValueList headers, out bool hasChunkedTE)
     {
         long contentLength = ContentLengthFields.Absent;
@@ -135,14 +137,13 @@ public static class BodyFramingDetector
         return value[start..end];
     }
 
-    internal static long ParseContentLengthDigits(ReadOnlySpan<byte> value)
+    /// <summary>
+    /// One decimal length with no list or whitespace around it — <see cref="ContentLengthFields.Fold"/>
+    /// splits and trims each field first: <c>-1</c> if it is empty or not all digits,
+    /// <see cref="long.MaxValue"/> if a long cannot hold it.
+    /// </summary>
+    internal static long ParseDecimalDigits(ReadOnlySpan<byte> value)
     {
-        // Handle comma-separated: take first segment, without the OWS a list allows before its
-        // comma - "5 ,5" is 5 (RFC 9110 §5.6.1), exactly as the validator read it.
-        int comma = value.IndexOf((byte)',');
-        if (comma >= 0)
-            value = TrimOws(value[..comma]);
-
         if (value.IsEmpty) return -1;
 
         const long Limit = long.MaxValue / 10;   // any digit may follow a smaller value
