@@ -39,10 +39,15 @@ public static class ContentLengthBodyReader
 
             var trimmed = value[start..end];
 
-            // Handle comma-separated: take first segment
+            // Handle comma-separated: take first segment, without the OWS a list allows before its
+            // comma - "5 ,5" is 5 (RFC 9110 §5.6.1), exactly as the validator read it.
             int comma = trimmed.IndexOf((byte)',');
             if (comma >= 0)
+            {
                 trimmed = trimmed[..comma];
+                while (!trimmed.IsEmpty && (trimmed[^1] == (byte)' ' || trimmed[^1] == (byte)'\t'))
+                    trimmed = trimmed[..^1];
+            }
 
             // Parse digits
             long result = 0;
