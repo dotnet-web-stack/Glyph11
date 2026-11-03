@@ -56,7 +56,7 @@ using Glyph11.Protocol;            // BinaryRequest
 using Glyph11.Parser;             // ParserLimits
 using Glyph11.Parser.UltraHardened; // UltraHardenedParser
 
-// BinaryRequest is reusable — allocate once, Clear() and reuse per request (see below).
+// BinaryRequest is reusable — allocate once and reuse per request; the parser clears it (see below).
 var request = new BinaryRequest();
 
 // ParserLimits is your security policy: header/URL sizes, counts. Default is a sane baseline.
@@ -229,14 +229,14 @@ while (true)
     </ul>
     <div class="warn"><b><code>bytesRead</code> is the header length minus one</b> — a long-standing glyph11
     convention. The body begins at <code>bytesRead + 1</code>; advance your reader by that.</div>
-    <p>Reuse the request to stay allocation-free across a connection: <code>request.Clear()</code> between
-    parses keeps the pooled header/query arrays; <code>request.Dispose()</code> returns them to the
-    <code>ArrayPool</code> when you're done with the connection.</p>
+    <p>Reuse the request to stay allocation-free across a connection: the parser clears it before
+    filling it, so nothing from the previous request carries over and the pooled header/query arrays
+    are kept; <code>request.Dispose()</code> returns them to the <code>ArrayPool</code> when you're
+    done with the connection.</p>
 <pre><code class="language-csharp">var request = new BinaryRequest();
 try
 {
-    // per request:
-    request.Clear();
+    // per request: parse into the same instance — no Clear() needed in between
     // ... parse + handle ...
 }
 finally

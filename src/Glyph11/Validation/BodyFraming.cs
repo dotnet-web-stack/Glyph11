@@ -36,6 +36,8 @@ public readonly struct BodyFramingResult
     /// <summary>
     /// The parsed Content-Length value. Meaningful only when
     /// <see cref="Framing"/> is <see cref="BodyFraming.ContentLength"/>.
+    /// A length too large for a <see cref="long"/> is reported as <see cref="long.MaxValue"/>:
+    /// refuse it as too large rather than reading towards it.
     /// </summary>
     public long ContentLength { get; }
 
