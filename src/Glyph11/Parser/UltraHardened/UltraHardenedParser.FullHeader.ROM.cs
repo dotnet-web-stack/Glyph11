@@ -42,16 +42,13 @@ public static partial class UltraHardenedParser
         consumed = 0;
         var span = input.Span;
 
-        int headerEnd = span.IndexOf(ParserConstants.CrlfCrlf);
-        if (headerEnd < 0) return false;
-
-        int totalHeaderBytes = headerEnd + 4;
-        if (totalHeaderBytes > limits.MaxTotalHeaderBytes)
-            throw new HttpParseException("Total header size exceeds limit.", statusCode: 431);
+        // ---- End of the header section, its line terminator, its size — RFC 9112 §2.2 ----
+        if (!TryLocateHeaderSection(span, limits, out int totalHeaderBytes, out ReadOnlySpan<byte> eol))
+            return false;
 
         // ---- Request line: METHOD SP URL SP VERSION CRLF ----
 
-        int requestLineEnd = span.IndexOf(ParserConstants.Crlf);
+        int requestLineEnd = span.IndexOf(eol);
         if (requestLineEnd < 0)
             throw new HttpParseException("Invalid HTTP/1.1 request line.");
 
@@ -182,7 +179,7 @@ public static partial class UltraHardenedParser
 
         // ---- Headers (structural parse + inline semantic checks) ----
 
-        int lineStart = requestLineEnd + 2;
+        int lineStart = requestLineEnd + eol.Length;
         int headerCount = 0;
 
         // Semantic state tracked across headers
@@ -193,7 +190,7 @@ public static partial class UltraHardenedParser
 
         while (true)
         {
-            int lineLen = span[lineStart..].IndexOf(ParserConstants.Crlf);
+            int lineLen = span[lineStart..].IndexOf(eol);
             if (lineLen < 0)
                 throw new HttpParseException("Invalid headers.");
 
@@ -296,7 +293,7 @@ public static partial class UltraHardenedParser
                     throw new HttpParseException("Invalid Host header.");
             }
 
-            lineStart += lineLen + 2;
+            lineStart += lineLen + eol.Length;
         }
 
         // ---- Post-loop cross-header semantic checks ----
