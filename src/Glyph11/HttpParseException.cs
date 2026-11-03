@@ -12,9 +12,12 @@ public class HttpParseException : Exception
         StatusCode = statusCode;
     }
 
-    /// <summary>The HTTP status code to return (400 for structural errors, 431 for limit breaches).</summary>
+    /// <summary>
+    /// The HTTP status code to return: 400 for structural or semantic errors, 431 for limit
+    /// breaches, 505 for a well-formed HTTP version the parser does not implement.
+    /// </summary>
     public int StatusCode { get; }
 
-    /// <summary>True when the error is a size/count limit breach (→ 431), false for structural errors (→ 400).</summary>
-    public bool IsLimitViolation => StatusCode != 400;
+    /// <summary>True when the error is a size/count limit breach (→ 431); false otherwise (400, 505).</summary>
+    public bool IsLimitViolation => StatusCode == 431;
 }

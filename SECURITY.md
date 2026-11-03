@@ -104,9 +104,9 @@ Transfer-Encoding: chunked\r\n
 
 **Attack:** Invalid version strings enable protocol downgrade attacks and undefined behavior.
 
-**RFC:** 9112 Section 2.6 — `HTTP-version = "HTTP/" DIGIT "." DIGIT`
+**RFC:** 9112 Section 2.3 — `HTTP-version = "HTTP/" DIGIT "." DIGIT`
 
-**Protection:** The version string must be exactly 8 bytes matching `HTTP/X.Y` where X and Y are ASCII digits.
+**Protection:** Only `HTTP/1.0` and `HTTP/1.1` are accepted, as exactly 8 case-sensitive bytes. A well-formed version the parser does not implement (`HTTP/2.0`, `HTTP/1.2`, `HTTP/0.9`, …) is rejected with 505 (RFC 9110 Section 15.6.6); anything that does not match the grammar at all (`http/1.1`, `HTTP/1.x`, `HTTP/11`, …) is a malformed message and rejected with 400.
 
 ### Resource Limits (DoS Prevention)
 
