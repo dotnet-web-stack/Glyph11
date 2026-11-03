@@ -9,8 +9,8 @@ public static partial class FlexibleParser
     /// Entry point: tries to extract a complete HTTP/1.1 header block (request line + headers).
     /// <para>
     /// Single-segment input is dispatched to the zero-copy ROM path.
-    /// Multi-segment input is checked for completeness (<c>\r\n\r\n</c>), then linearized
-    /// via <c>ToArray()</c> and parsed through the ROM path.
+    /// Multi-segment input is checked for completeness (<c>\r\n\r\n</c>), then its header block
+    /// alone is linearized (a pipelined body is never copied) and parsed through the ROM path.
     /// </para>
     /// </summary>
     /// <param name="input">Input buffer from the network layer.</param>
@@ -36,8 +36,9 @@ public static partial class FlexibleParser
             return false;
         }
 
-        // Linearize: copy all segments into a single contiguous array, then parse via ROM
-        ReadOnlyMemory<byte> mem = input.ToArray();
+        // Linearize the header block only — never the pipelined body behind it.
+        // reader.Consumed is the block's length, CRLFCRLF included.
+        ReadOnlyMemory<byte> mem = input.Slice(0, reader.Consumed).ToArray();
         return TryParseRequestHeader(ref mem, request, out consumed);
     }
 }
