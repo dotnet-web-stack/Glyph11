@@ -178,9 +178,11 @@ All limits are configurable via `ParserLimits`:
 
 #### Host Header Format
 
-**Attack:** A `Host` value containing userinfo (`@`) or a path (`/`) can redirect routing or poison caches.
+**Attack:** A `Host` value containing userinfo (`@`), a path (`/`), whitespace or other junk can redirect routing, poison caches, or be read differently by the front-end and the back-end. An empty `Host` gives anything that routes or authorizes on it nothing to check.
 
-**RFC:** 9110 Section 7.2 — Host is the host (and optional port) only.
+**Protection:** The value (with surrounding OWS removed) must match `uri-host [ ":" port ]`, where `uri-host` is a reg-name — unreserved characters, sub-delims and well-formed pct-encoding, which also covers dotted IPv4 — or a bracketed IPv6 literal checked group by group (at most one `::`, optional trailing dotted IPv4). Rejected outright: an empty value, IPvFuture and IPv6 zone identifiers, `%00`, and a port that is empty, longer than five digits or above 65535.
+
+**RFC:** 9110 Section 7.2, RFC 3986 Section 3.2.2 — Host is the host (and optional port) only. RFC 9112 Section 3.2 lets a client send an empty Host when the target URI has no authority; an origin server serving `http`/`https` targets never sees such a request legitimately, so it is refused.
 
 ### Path Traversal
 
