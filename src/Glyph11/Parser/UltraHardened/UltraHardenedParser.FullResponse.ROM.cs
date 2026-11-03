@@ -68,9 +68,17 @@ public static partial class UltraHardenedParser
             throw new HttpParseException("Invalid status line: missing status code.");
 
         // --- Version ---
+        // Same rule as the request line: a well-formed version this parser does not implement is
+        // 505, anything else in this position is a malformed status line, 400.
         var versionSpan = statusLine[..firstSpace];
         if (!ParserConstants.IsValidHttpVersion(versionSpan))
-            throw new HttpParseException("Invalid HTTP version.", 505);
+            throw ParserConstants.IsWellFormedHttpVersion(versionSpan)
+                ? new HttpParseException("Unsupported HTTP version.", 505)
+                : new HttpParseException("Invalid HTTP version.");
+
+        // ---- The parser owns the target: nothing from a previous message may carry over ----
+        // Cleared here, at the first write, so an incomplete call (false) leaves it untouched.
+        response.Clear();
 
         response.Version = input[..firstSpace];
 
@@ -87,9 +95,11 @@ public static partial class UltraHardenedParser
 
         int status = ((codeSpan[0] - '0') * 100) + ((codeSpan[1] - '0') * 10) + (codeSpan[2] - '0');
 
-        // A three-digit code below 100 is well-formed but not a status — 0xx has no meaning and
-        // treating it as one lets a garbage first line pass as a response.
-        if (status < 100)
+        // RFC 9110 §15 — valid status codes are 100-599. A three-digit code outside that range is
+        // well-formed but not a status: 0xx and 6xx-9xx have no meaning, treating one as a status
+        // lets a garbage first line pass as a response, and a caller branching on the class
+        // (1xx, 2xx, ...) would meet classes that do not exist.
+        if (status is < 100 or > 599)
             throw new HttpParseException("Status code must be in the range 100-599.");
 
         response.StatusCode = input.Slice(codeStart, 3);

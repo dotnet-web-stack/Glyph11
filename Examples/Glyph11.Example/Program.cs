@@ -11,8 +11,9 @@ using Glyph11.Protocol;            // BinaryRequest, KeyValueList
 using Glyph11.Parser;             // ParserLimits, ChunkedBodyStream
 using Glyph11.Parser.UltraHardened; // UltraHardenedParser
 
-// A BinaryRequest is reusable storage — allocate it once and Clear() it between requests
-// to stay allocation-free across a connection (see Example 6).
+// A BinaryRequest is reusable storage — allocate it once and reuse it for every request on a
+// connection to stay allocation-free (see Example 6). The parser clears it before filling it,
+// so nothing from the previous request carries over; the Clear() calls below are optional.
 var request = new BinaryRequest();
 
 ContiguousParse();

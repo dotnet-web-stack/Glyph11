@@ -20,38 +20,20 @@ public static class BodyFramingDetector
     /// framing kind (chunked, content-length, or none) without touching any body bytes.
     /// Single pass over headers.
     /// </summary>
+    /// <exception cref="HttpParseException">
+    /// The Content-Length fields — or the elements of a list in one — state different lengths. The
+    /// hardened parser already rejects these; this catches them for any other parser.
+    /// </exception>
     public static BodyFramingResult DetectBodyFraming(BinaryRequest request)
     {
-        var headers = request.Headers;
-        ReadOnlySpan<byte> contentLengthValue = default;
-        bool hasChunkedTE = false;
-
-        for (int i = 0; i < headers.Count; i++)
-        {
-            var name = headers[i].Key.Span;
-
-            if (name.Length == 17 && ParserConstants.AsciiEqualsIgnoreCase(name, TransferEncodingName))
-            {
-                var value = TrimOws(headers[i].Value.Span);
-                if (ParserConstants.AsciiEqualsIgnoreCase(value, ChunkedValue))
-                    hasChunkedTE = true;
-            }
-            else if (name.Length == 14 && ParserConstants.AsciiEqualsIgnoreCase(name, ContentLengthName))
-            {
-                contentLengthValue = TrimOws(headers[i].Value.Span);
-            }
-        }
+        long contentLength = ScanFramingFields(request.Headers, out bool hasChunkedTE);
 
         // Chunked takes priority over Content-Length (RFC 9112 §6.1)
         if (hasChunkedTE)
             return BodyFramingResult.ForChunked;
 
-        if (!contentLengthValue.IsEmpty)
-        {
-            long cl = ParseContentLengthDigits(contentLengthValue);
-            if (cl > 0)
-                return BodyFramingResult.ForContentLength(cl);
-        }
+        if (contentLength > 0)
+            return BodyFramingResult.ForContentLength(contentLength);
 
         return BodyFramingResult.NoBody;
     }
@@ -72,6 +54,9 @@ public static class BodyFramingDetector
     /// all, then Transfer-Encoding, then Content-Length, and a response with none of those runs
     /// until the connection closes.
     /// </remarks>
+    /// <exception cref="HttpParseException">
+    /// The Content-Length fields — or the elements of a list in one — state different lengths.
+    /// </exception>
     public static BodyFramingResult DetectResponseBodyFraming(
         BinaryResponse response, ReadOnlySpan<byte> requestMethod)
     {
@@ -92,9 +77,33 @@ public static class BodyFramingDetector
             ParserConstants.AsciiEqualsIgnoreCase(requestMethod, ConnectMethodName))
             return BodyFramingResult.NoBody;
 
-        var headers = response.Headers;
-        ReadOnlySpan<byte> contentLengthValue = default;
-        bool hasChunkedTE = false;
+        long contentLength = ScanFramingFields(response.Headers, out bool hasChunkedTE);
+
+        // Chunked takes priority over Content-Length (RFC 9112 §6.1)
+        if (hasChunkedTE)
+            return BodyFramingResult.ForChunked;
+
+        if (contentLength > 0)
+            return BodyFramingResult.ForContentLength(contentLength);
+        if (contentLength == 0)
+            return BodyFramingResult.NoBody;
+
+        // No framing header at all. Unlike a request - which is simply bodyless here - a response
+        // runs to end of connection (RFC 9112 §6.3), which is also the only framing HTTP/1.0
+        // origins ever had.
+        return BodyFramingResult.ForUntilClose;
+    }
+
+    /// <summary>
+    /// The single pass over the header fields that both directions share: whether
+    /// Transfer-Encoding is chunked, and the length the Content-Length fields agree on
+    /// (<see cref="ContentLengthFields.Absent"/> when there are none).
+    /// </summary>
+    /// <exception cref="HttpParseException">The Content-Length fields disagree.</exception>
+    private static long ScanFramingFields(KeyValueList headers, out bool hasChunkedTE)
+    {
+        long contentLength = ContentLengthFields.Absent;
+        hasChunkedTE = false;
 
         for (int i = 0; i < headers.Count; i++)
         {
@@ -108,30 +117,14 @@ public static class BodyFramingDetector
             }
             else if (name.Length == 14 && ParserConstants.AsciiEqualsIgnoreCase(name, ContentLengthName))
             {
-                contentLengthValue = TrimOws(headers[i].Value.Span);
+                ContentLengthFields.Fold(ref contentLength, headers[i].Value.Span);
             }
         }
 
-        // Chunked takes priority over Content-Length (RFC 9112 §6.1)
-        if (hasChunkedTE)
-            return BodyFramingResult.ForChunked;
-
-        if (!contentLengthValue.IsEmpty)
-        {
-            long cl = ParseContentLengthDigits(contentLengthValue);
-            if (cl > 0)
-                return BodyFramingResult.ForContentLength(cl);
-            if (cl == 0)
-                return BodyFramingResult.NoBody;
-        }
-
-        // No framing header at all. Unlike a request - which is simply bodyless here - a response
-        // runs to end of connection (RFC 9112 §6.3), which is also the only framing HTTP/1.0
-        // origins ever had.
-        return BodyFramingResult.ForUntilClose;
+        return contentLength;
     }
 
-    private static ReadOnlySpan<byte> TrimOws(ReadOnlySpan<byte> value)
+    internal static ReadOnlySpan<byte> TrimOws(ReadOnlySpan<byte> value)
     {
         int start = 0;
         while (start < value.Length && (value[start] == (byte)' ' || value[start] == (byte)'\t'))
@@ -142,22 +135,28 @@ public static class BodyFramingDetector
         return value[start..end];
     }
 
-    private static long ParseContentLengthDigits(ReadOnlySpan<byte> value)
+    internal static long ParseContentLengthDigits(ReadOnlySpan<byte> value)
     {
-        // Handle comma-separated: take first segment
+        // Handle comma-separated: take first segment, without the OWS a list allows before its
+        // comma - "5 ,5" is 5 (RFC 9110 §5.6.1), exactly as the validator read it.
         int comma = value.IndexOf((byte)',');
         if (comma >= 0)
-            value = value[..comma];
+            value = TrimOws(value[..comma]);
 
         if (value.IsEmpty) return -1;
+
+        const long Limit = long.MaxValue / 10;   // any digit may follow a smaller value
 
         long result = 0;
         for (int j = 0; j < value.Length; j++)
         {
             byte b = value[j];
             if (b < (byte)'0' || b > (byte)'9') return -1;
-            result = result * 10 + (b - '0');
-            if (result < 0) return -1; // overflow
+            int digit = b - '0';
+            // Saturate rather than fail: the validator accepts lengths up to ulong.MaxValue, and one
+            // a long cannot hold must frame as too large, never as "no body". Every remaining byte is
+            // still checked to be a digit. Below Limit this is a single comparison.
+            result = result < Limit || (result == Limit && digit <= 7) ? result * 10 + digit : long.MaxValue;
         }
 
         return result;

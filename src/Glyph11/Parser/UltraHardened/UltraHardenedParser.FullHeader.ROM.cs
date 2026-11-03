@@ -84,6 +84,10 @@ public static partial class UltraHardenedParser
         if (!ParserConstants.IsValidToken(methodSpan))
             throw new HttpParseException("Method contains invalid token characters.");
 
+        // ---- The parser owns the target: nothing from a previous message may carry over ----
+        // Cleared here, at the first write, so an incomplete call (false) leaves it untouched.
+        request.Clear();
+
         request.Method = input[..firstSpace];
 
         // ---- Semantic: CONNECT method — RFC 9110 §9.3.6 ----
@@ -103,9 +107,13 @@ public static partial class UltraHardenedParser
             throw new HttpParseException("Request-target contains invalid characters.");
 
         // --- Version ---
+        // A well-formed HTTP-version this parser does not implement is 505 (RFC 9110 §15.6.6);
+        // bytes that are not an HTTP-version at all make a malformed request line, 400.
         var versionSpan = requestLine[(secondSpace + 1)..];
         if (!ParserConstants.IsValidHttpVersion(versionSpan))
-            throw new HttpParseException("Invalid HTTP version.", 505);
+            throw ParserConstants.IsWellFormedHttpVersion(versionSpan)
+                ? new HttpParseException("Unsupported HTTP version.", 505)
+                : new HttpParseException("Invalid HTTP version.");
 
         request.Version = input.Slice(secondSpace + 1, versionSpan.Length);
 
@@ -283,9 +291,9 @@ public static partial class UltraHardenedParser
             {
                 hostCount++;
 
-                // RFC 9110 §7.2 — Host must be host:port only
-                if (valueSpan.IndexOf((byte)'@') >= 0 || valueSpan.IndexOf((byte)'/') >= 0)
-                    throw new HttpParseException("Invalid Host header: contains '@' or '/'.");
+                // RFC 9110 §7.2 / RFC 3986 §3.2.2 — Host is uri-host [ ":" port ] and nothing else
+                if (!SemIsValidHost(valueSpan))
+                    throw new HttpParseException("Invalid Host header.");
             }
 
             lineStart += lineLen + 2;

@@ -5,7 +5,9 @@ namespace Glyph11.Protocol;
 /// All byte-level fields are <see cref="ReadOnlyMemory{T}"/> slices that reference
 /// the original input buffer (zero-copy on the single-segment path).
 /// <para>
-/// Reuse instances across responses by calling <see cref="Clear"/> between parses.
+/// Reuse instances across responses: the parser clears the target before filling it, so nothing
+/// from a previous response carries over and calling <see cref="Clear"/> between parses is not
+/// required (it remains useful to release references to the previous input early).
 /// Call <see cref="Dispose"/> when the instance is no longer needed to return
 /// pooled arrays used by <see cref="Headers"/>.
 /// </para>
