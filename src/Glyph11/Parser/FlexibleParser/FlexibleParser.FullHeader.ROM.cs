@@ -33,6 +33,10 @@ public static partial class FlexibleParser
 
         int secondSpaceIndex = firstSpaceIndex + 1 + secondSpaceRelativeIndex;
 
+        // The parser owns the target: nothing from a previous message may carry over. Cleared
+        // here, at the first write, so an incomplete call (false) leaves it untouched.
+        request.Clear();
+
         request.Method = input[..firstSpaceIndex];
 
         int urlStart = firstSpaceIndex + 1;
