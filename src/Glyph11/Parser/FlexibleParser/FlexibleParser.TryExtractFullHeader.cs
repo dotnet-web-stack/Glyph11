@@ -15,27 +15,30 @@ public static partial class FlexibleParser
     /// </summary>
     /// <param name="input">Input buffer from the network layer.</param>
     /// <param name="request">Target to populate with parsed request data.</param>
-    /// <param name="bytesReadCount">Bytes consumed on success, or -1 if incomplete.</param>
+    /// <param name="consumed">
+    /// On success, the length of the header block including its terminating CRLFCRLF: the body,
+    /// if any, starts at <c>input.Slice(consumed)</c>. 0 when the method returns <c>false</c>.
+    /// </param>
     /// <returns><c>true</c> if a complete header was parsed; <c>false</c> if more data is needed.</returns>
-    public static bool TryExtractFullHeader(ref ReadOnlySequence<byte> input, BinaryRequest request, out int bytesReadCount)
+    public static bool TryParseRequestHeader(ref ReadOnlySequence<byte> input, BinaryRequest request, out int consumed)
     {
         if (input.IsSingleSegment)
         {
             ReadOnlyMemory<byte> singleMemorySegment = input.First;
-            return TryExtractFullHeaderReadOnlyMemory(ref singleMemorySegment, request, out bytesReadCount);
+            return TryParseRequestHeader(ref singleMemorySegment, request, out consumed);
         }
 
         // Check for header completeness before allocating
         var reader = new SequenceReader<byte>(input);
         if (!reader.TryReadTo(out ReadOnlySequence<byte> _, CrlfCrlf, advancePastDelimiter: true))
         {
-            bytesReadCount = -1;
+            consumed = 0;
             return false;
         }
 
         // Linearize the header block only — never the pipelined body behind it.
         // reader.Consumed is the block's length, CRLFCRLF included.
         ReadOnlyMemory<byte> mem = input.Slice(0, reader.Consumed).ToArray();
-        return TryExtractFullHeaderReadOnlyMemory(ref mem, request, out bytesReadCount);
+        return TryParseRequestHeader(ref mem, request, out consumed);
     }
 }

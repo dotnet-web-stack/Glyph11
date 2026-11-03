@@ -11,15 +11,17 @@ Glyph11's security is delivered by **`UltraHardenedParser`**, which enforces RFC
 
 ## Syntactic Protections
 
-These checks are enforced during `TryExtractFullHeaderValidated` / `TryExtractFullHeaderROM`. Violations throw `HttpParseException`.
+These checks are enforced during `TryParseRequestHeader` (both the `ReadOnlySequence<byte>` and `ReadOnlyMemory<byte>` overloads). Violations throw `HttpParseException`.
 
 ### Bare LF Rejection
 
 **Attack:** HTTP request smuggling via bare line feed (0x0A without preceding 0x0D). Some parsers accept bare LF as a line terminator while others require CRLF, creating parsing discrepancies.
 
-**RFC:** 9112 Section 2.2 — "A recipient of such a bare CR MUST consider that element to be invalid."
+**RFC:** 9112 Section 2.2 — "Although the line terminator for the start-line and fields is the sequence CRLF, a recipient MAY recognize a single LF as a line terminator and ignore any preceding CR."
 
-**Protection:** The parser checks each parsed line for bare LF (0x0A) using vectorized `IndexOf`. Any bare LF causes immediate rejection.
+**Protection:** By default only CRLF is accepted. The parser checks each parsed line for bare LF (0x0A) using vectorized `IndexOf`, and any bare LF causes immediate rejection. That includes a header section that has not finished arriving: once a bare LF is in the buffer no later byte can make the message valid, so the parser throws instead of returning "incomplete" — which would leave the caller waiting for a CRLFCRLF that never comes.
+
+**Opt-in leniency:** `ParserLimits.AllowBareLf = true` accepts a message that uses bare LF *throughout*, as the RFC permits. The message's first line terminator decides its style, and a message that mixes CRLF and bare LF is still rejected — the mix, not LF itself, is where two parsers disagree about where a line ended. Meant for a client reading responses from an origin it chose; never enable it on a server in front of or behind other HTTP implementations.
 
 **CVEs prevented:** CVE-2023-30589 (Node.js), CVE-2025-58056 (Netty), CVE-2019-16785 (Waitress).
 
@@ -104,9 +106,9 @@ Transfer-Encoding: chunked\r\n
 
 **Attack:** Invalid version strings enable protocol downgrade attacks and undefined behavior.
 
-**RFC:** 9112 Section 2.6 — `HTTP-version = "HTTP/" DIGIT "." DIGIT`
+**RFC:** 9112 Section 2.3 — `HTTP-version = "HTTP/" DIGIT "." DIGIT`
 
-**Protection:** The version string must be exactly 8 bytes matching `HTTP/X.Y` where X and Y are ASCII digits.
+**Protection:** Only `HTTP/1.0` and `HTTP/1.1` are accepted, as exactly 8 case-sensitive bytes. A well-formed version the parser does not implement (`HTTP/2.0`, `HTTP/1.2`, `HTTP/0.9`, …) is rejected with 505 (RFC 9110 Section 15.6.6); anything that does not match the grammar at all (`http/1.1`, `HTTP/1.x`, `HTTP/11`, …) is a malformed message and rejected with 400.
 
 ### Resource Limits (DoS Prevention)
 
@@ -121,6 +123,7 @@ All limits are configurable via `ParserLimits`:
 | `MaxQueryParameterCount` | 128 | Query parameter flooding |
 | `MaxMethodLength` | 16 | Oversized method strings |
 | `MaxTotalHeaderBytes` | 1048576 | Total header section DoS |
+| `MaxTotalTrailerBytes` | 16384 | Endless chunked trailer section (applies to `ChunkedBodyStream` / `ChunkedBodyValidator`) |
 
 ---
 
@@ -178,9 +181,11 @@ All limits are configurable via `ParserLimits`:
 
 #### Host Header Format
 
-**Attack:** A `Host` value containing userinfo (`@`) or a path (`/`) can redirect routing or poison caches.
+**Attack:** A `Host` value containing userinfo (`@`), a path (`/`), whitespace or other junk can redirect routing, poison caches, or be read differently by the front-end and the back-end. An empty `Host` gives anything that routes or authorizes on it nothing to check.
 
-**RFC:** 9110 Section 7.2 — Host is the host (and optional port) only.
+**Protection:** The value (with surrounding OWS removed) must match `uri-host [ ":" port ]`, where `uri-host` is a reg-name — unreserved characters, sub-delims and well-formed pct-encoding, which also covers dotted IPv4 — or a bracketed IPv6 literal checked group by group (at most one `::`, optional trailing dotted IPv4). Rejected outright: an empty value, IPvFuture and IPv6 zone identifiers, `%00`, and a port that is empty, longer than five digits or above 65535.
+
+**RFC:** 9110 Section 7.2, RFC 3986 Section 3.2.2 — Host is the host (and optional port) only. RFC 9112 Section 3.2 lets a client send an empty Host when the target URI has no authority; an origin server serving `http`/`https` targets never sees such a request legitimately, so it is refused.
 
 ### Path Traversal
 
@@ -240,9 +245,9 @@ var limits = ParserLimits.Default;
 
 // Structural + semantic validation in a single pass.
 // Throws HttpParseException on any protocol or semantic violation.
-if (UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in limits, out var bytesRead))
+if (UltraHardenedParser.TryParseRequestHeader(ref buffer, request, in limits, out var consumed))
 {
-    // Safe to process request — fully validated.
+    // Safe to process request — fully validated. The body (if any) starts at `consumed`.
 }
 ```
 

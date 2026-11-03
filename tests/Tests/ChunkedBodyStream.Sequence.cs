@@ -105,8 +105,9 @@ public class ChunkedBodyStreamSequenceTests
         var full = B("5\r\nHello\r\n0\r\n\r\n");
         var s = new ChunkedBodyStream();
 
-        // present a prefix mid-chunk → NeedMoreData, state rolled back, nothing consumed
-        var r1 = s.TryReadChunk(Segmented(full[..7], 3), out var c1, out _);
+        // present a prefix that ends before any chunk data → NeedMoreData, state rolled back,
+        // nothing consumed (data that has arrived is handed out; see ChunkedBodyStream.Limits.cs)
+        var r1 = s.TryReadChunk(Segmented(full[..3], 3), out var c1, out _);
         Assert.Equal(ChunkResult.NeedMoreData, r1);
         Assert.Equal(0, c1);
 

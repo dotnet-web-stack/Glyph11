@@ -10,11 +10,14 @@ public static partial class FlexibleParser
     /// </summary>
     /// <param name="input">Contiguous buffer containing the full HTTP request header.</param>
     /// <param name="request">Target to populate with parsed method, path, headers, etc.</param>
-    /// <param name="bytesReadCount">Number of bytes consumed (header + terminators - 1), or -1 if incomplete.</param>
+    /// <param name="consumed">
+    /// On success, the length of the header block including its terminating CRLFCRLF: the body,
+    /// if any, starts at <c>input[consumed]</c>. 0 when the method returns <c>false</c>.
+    /// </param>
     /// <returns><c>true</c> if a complete header was parsed; <c>false</c> if the <c>\r\n\r\n</c> terminator was not found.</returns>
-    public static bool TryExtractFullHeaderReadOnlyMemory(ref ReadOnlyMemory<byte> input, BinaryRequest request, out int bytesReadCount)
+    public static bool TryParseRequestHeader(ref ReadOnlyMemory<byte> input, BinaryRequest request, out int consumed)
     {
-        bytesReadCount = -1;
+        consumed = 0;
         var slicedInputSpan = input.Span;
 
         int headerEnd = slicedInputSpan.IndexOf(CrlfCrlf);
@@ -32,6 +35,10 @@ public static partial class FlexibleParser
         if (secondSpaceRelativeIndex < 0) throw new HttpParseException("Invalid request line.");
 
         int secondSpaceIndex = firstSpaceIndex + 1 + secondSpaceRelativeIndex;
+
+        // The parser owns the target: nothing from a previous message may carry over. Cleared
+        // here, at the first write, so an incomplete call (false) leaves it untouched.
+        request.Clear();
 
         request.Method = input[..firstSpaceIndex];
 
@@ -116,7 +123,7 @@ public static partial class FlexibleParser
             lineStart += lineLen + 2;
         }
 
-        bytesReadCount += headerEnd + 4;
+        consumed = headerEnd + 4;
         return true;
     }
 }

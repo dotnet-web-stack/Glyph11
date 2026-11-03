@@ -17,24 +17,27 @@ public static partial class UltraHardenedParser
     /// <param name="input">Input buffer from the network layer.</param>
     /// <param name="request">Target to populate with parsed request data.</param>
     /// <param name="limits">Resource limits to enforce during parsing.</param>
-    /// <param name="bytesReadCount">Bytes consumed on success, or -1 if incomplete.</param>
+    /// <param name="consumed">
+    /// On success, the length of the header block including its terminating CRLFCRLF: the body,
+    /// if any, starts at <c>input.Slice(consumed)</c>. 0 when the method returns <c>false</c>.
+    /// </param>
     /// <returns><c>true</c> if a complete header was parsed and validated; <c>false</c> if more data is needed.</returns>
     /// <exception cref="HttpParseException">Thrown on any protocol or semantic violation.</exception>
-    public static bool TryExtractFullHeaderValidated(
+    public static bool TryParseRequestHeader(
         ref ReadOnlySequence<byte> input, BinaryRequest request,
-        in ParserLimits limits, out int bytesReadCount)
+        in ParserLimits limits, out int consumed)
     {
         if (input.IsSingleSegment)
         {
             ReadOnlyMemory<byte> singleMemorySegment = input.First;
-            return TryExtractFullHeaderROM(ref singleMemorySegment, request, in limits, out bytesReadCount);
+            return TryParseRequestHeader(ref singleMemorySegment, request, in limits, out consumed);
         }
 
-        // Check for header completeness before allocating
+        // Check for header completeness before allocating (throws if bare LF already settles it)
         var reader = new SequenceReader<byte>(input);
-        if (!reader.TryReadTo(out ReadOnlySequence<byte> _, ParserConstants.CrlfCrlf, advancePastDelimiter: true))
+        if (!TryReadPastHeaderEnd(ref reader, in limits))
         {
-            bytesReadCount = -1;
+            consumed = 0;
             return false;
         }
 
@@ -44,6 +47,6 @@ public static partial class UltraHardenedParser
             throw new HttpParseException("Total header size exceeds limit.", statusCode: 431);
 
         ReadOnlyMemory<byte> mem = input.Slice(0, reader.Consumed).ToArray();
-        return TryExtractFullHeaderROM(ref mem, request, in limits, out bytesReadCount);
+        return TryParseRequestHeader(ref mem, request, in limits, out consumed);
     }
 }

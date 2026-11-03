@@ -11,8 +11,9 @@ using Glyph11.Protocol;            // BinaryRequest, KeyValueList
 using Glyph11.Parser;             // ParserLimits, ChunkedBodyStream
 using Glyph11.Parser.UltraHardened; // UltraHardenedParser
 
-// A BinaryRequest is reusable storage — allocate it once and Clear() it between requests
-// to stay allocation-free across a connection (see Example 6).
+// A BinaryRequest is reusable storage — allocate it once and reuse it for every request on a
+// connection to stay allocation-free (see Example 6). The parser clears it before filling it,
+// so nothing from the previous request carries over; the Clear() calls below are optional.
 var request = new BinaryRequest();
 
 ContiguousParse();
@@ -31,7 +32,7 @@ void ContiguousParse()
 {
     Console.WriteLine("== 1. Contiguous parse ==");
 
-    // The request bytes as one block. TryExtractFullHeaderROM takes a ReadOnlyMemory<byte>.
+    // The request bytes as one block. This TryParseRequestHeader overload takes a ReadOnlyMemory<byte>.
     ReadOnlyMemory<byte> input = Encoding.ASCII.GetBytes(
         "GET /api/users?page=1&sort=asc HTTP/1.1\r\n" +
         "Host: example.com\r\n" +
@@ -42,7 +43,7 @@ void ContiguousParse()
 
     // Returns true on a complete, valid header block; false if the buffer is incomplete;
     // throws HttpParseException if the bytes are a complete but invalid/malicious request.
-    if (UltraHardenedParser.TryExtractFullHeaderROM(ref input, request, in limits, out int bytesRead))
+    if (UltraHardenedParser.TryParseRequestHeader(ref input, request, in limits, out int consumed))
     {
         // Every field is a zero-copy ReadOnlyMemory<byte> slice of `input`.
         Console.WriteLine($"  method  = {Ascii(request.Method)}");   // GET
@@ -65,8 +66,8 @@ void ContiguousParse()
             Console.WriteLine($"    {Ascii(key)} = {Ascii(val)}");
         }
 
-        // bytesRead follows glyph11's -1 convention: the body begins at bytesRead + 1.
-        Console.WriteLine($"  header block length = {bytesRead + 1} bytes");
+        // consumed is the header block's length: a body, if any, begins at input[consumed].
+        Console.WriteLine($"  header block length = {consumed} bytes");
     }
     Console.WriteLine();
 }
@@ -89,7 +90,7 @@ void MultiSegmentParse()
 
     // Same contract as Example 1, but for a (possibly) multi-segment sequence. It takes the
     // contiguous fast path automatically when the sequence happens to be single-segment.
-    if (UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in limits, out int bytesRead))
+    if (UltraHardenedParser.TryParseRequestHeader(ref buffer, request, in limits, out _))
         Console.WriteLine($"  parsed {Ascii(request.Method)} {Ascii(request.Path)} from 3 segments\n");
 }
 
@@ -117,7 +118,7 @@ void CustomLimits()
     request.Clear();
     try
     {
-        UltraHardenedParser.TryExtractFullHeaderROM(ref tooMany, request, in strict, out _);
+        UltraHardenedParser.TryParseRequestHeader(ref tooMany, request, in strict, out _);
         Console.WriteLine("  unexpectedly accepted");
     }
     catch (HttpParseException ex)
@@ -174,7 +175,7 @@ void ErrorHandling()
     // (a) Incomplete — the header block isn't terminated yet. Returns false: read more.
     ReadOnlyMemory<byte> partial = Encoding.ASCII.GetBytes("GET / HTTP/1.1\r\nHost: x\r\n");
     request.Clear();
-    bool ok = UltraHardenedParser.TryExtractFullHeaderROM(ref partial, request, in limits, out _);
+    bool ok = UltraHardenedParser.TryParseRequestHeader(ref partial, request, in limits, out _);
     Console.WriteLine($"  incomplete request → returned {ok} (need more bytes)");
 
     // (b) Invalid — a path-traversal attempt. A complete but malicious request → throws.
@@ -182,7 +183,7 @@ void ErrorHandling()
     request.Clear();
     try
     {
-        UltraHardenedParser.TryExtractFullHeaderROM(ref evil, request, in limits, out _);
+        UltraHardenedParser.TryParseRequestHeader(ref evil, request, in limits, out _);
     }
     catch (HttpParseException ex)
     {
@@ -204,7 +205,7 @@ void ReuseAndDispose()
     {
         ReadOnlyMemory<byte> req = Encoding.ASCII.GetBytes($"GET {path} HTTP/1.1\r\nHost: x\r\n\r\n");
         shared.Clear();   // reset before each parse; reuses the same pooled storage
-        if (UltraHardenedParser.TryExtractFullHeaderROM(ref req, shared, in limits, out _))
+        if (UltraHardenedParser.TryParseRequestHeader(ref req, shared, in limits, out _))
             Console.WriteLine($"  parsed {Ascii(shared.Path)}");
     }
 

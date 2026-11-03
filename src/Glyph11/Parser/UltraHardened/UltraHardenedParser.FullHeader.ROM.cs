@@ -25,24 +25,30 @@ public static partial class UltraHardenedParser
     /// structurally or semantically invalid.
     /// </para>
     /// </summary>
+    /// <param name="input">Contiguous buffer holding the request header (and possibly more).</param>
+    /// <param name="request">Target to populate with parsed request data.</param>
+    /// <param name="limits">Resource limits to enforce during parsing.</param>
+    /// <param name="consumed">
+    /// On success, the length of the header block including its terminating CRLFCRLF: the body,
+    /// if any, starts at <c>input[consumed]</c>. 0 when the method returns <c>false</c>.
+    /// </param>
+    /// <returns><c>true</c> if a complete header was parsed and validated; <c>false</c> if more data is needed.</returns>
+    /// <exception cref="HttpParseException">Thrown on any protocol or semantic violation.</exception>
     [SkipLocalsInit]
-    public static bool TryExtractFullHeaderROM(
+    public static bool TryParseRequestHeader(
         ref ReadOnlyMemory<byte> input, BinaryRequest request,
-        in ParserLimits limits, out int bytesReadCount)
+        in ParserLimits limits, out int consumed)
     {
-        bytesReadCount = -1;
+        consumed = 0;
         var span = input.Span;
 
-        int headerEnd = span.IndexOf(ParserConstants.CrlfCrlf);
-        if (headerEnd < 0) return false;
-
-        int totalHeaderBytes = headerEnd + 4;
-        if (totalHeaderBytes > limits.MaxTotalHeaderBytes)
-            throw new HttpParseException("Total header size exceeds limit.", statusCode: 431);
+        // ---- End of the header section, its line terminator, its size — RFC 9112 §2.2 ----
+        if (!TryLocateHeaderSection(span, limits, out int totalHeaderBytes, out ReadOnlySpan<byte> eol))
+            return false;
 
         // ---- Request line: METHOD SP URL SP VERSION CRLF ----
 
-        int requestLineEnd = span.IndexOf(ParserConstants.Crlf);
+        int requestLineEnd = span.IndexOf(eol);
         if (requestLineEnd < 0)
             throw new HttpParseException("Invalid HTTP/1.1 request line.");
 
@@ -75,6 +81,10 @@ public static partial class UltraHardenedParser
         if (!ParserConstants.IsValidToken(methodSpan))
             throw new HttpParseException("Method contains invalid token characters.");
 
+        // ---- The parser owns the target: nothing from a previous message may carry over ----
+        // Cleared here, at the first write, so an incomplete call (false) leaves it untouched.
+        request.Clear();
+
         request.Method = input[..firstSpace];
 
         // ---- Semantic: CONNECT method — RFC 9110 §9.3.6 ----
@@ -94,9 +104,13 @@ public static partial class UltraHardenedParser
             throw new HttpParseException("Request-target contains invalid characters.");
 
         // --- Version ---
+        // A well-formed HTTP-version this parser does not implement is 505 (RFC 9110 §15.6.6);
+        // bytes that are not an HTTP-version at all make a malformed request line, 400.
         var versionSpan = requestLine[(secondSpace + 1)..];
         if (!ParserConstants.IsValidHttpVersion(versionSpan))
-            throw new HttpParseException("Invalid HTTP version.", 505);
+            throw ParserConstants.IsWellFormedHttpVersion(versionSpan)
+                ? new HttpParseException("Unsupported HTTP version.", 505)
+                : new HttpParseException("Invalid HTTP version.");
 
         request.Version = input.Slice(secondSpace + 1, versionSpan.Length);
 
@@ -165,7 +179,7 @@ public static partial class UltraHardenedParser
 
         // ---- Headers (structural parse + inline semantic checks) ----
 
-        int lineStart = requestLineEnd + 2;
+        int lineStart = requestLineEnd + eol.Length;
         int headerCount = 0;
 
         // Semantic state tracked across headers
@@ -176,7 +190,7 @@ public static partial class UltraHardenedParser
 
         while (true)
         {
-            int lineLen = span[lineStart..].IndexOf(ParserConstants.Crlf);
+            int lineLen = span[lineStart..].IndexOf(eol);
             if (lineLen < 0)
                 throw new HttpParseException("Invalid headers.");
 
@@ -274,12 +288,12 @@ public static partial class UltraHardenedParser
             {
                 hostCount++;
 
-                // RFC 9110 §7.2 — Host must be host:port only
-                if (valueSpan.IndexOf((byte)'@') >= 0 || valueSpan.IndexOf((byte)'/') >= 0)
-                    throw new HttpParseException("Invalid Host header: contains '@' or '/'.");
+                // RFC 9110 §7.2 / RFC 3986 §3.2.2 — Host is uri-host [ ":" port ] and nothing else
+                if (!SemIsValidHost(valueSpan))
+                    throw new HttpParseException("Invalid Host header.");
             }
 
-            lineStart += lineLen + 2;
+            lineStart += lineLen + eol.Length;
         }
 
         // ---- Post-loop cross-header semantic checks ----
@@ -292,7 +306,7 @@ public static partial class UltraHardenedParser
         if (hostCount != 1)
             throw new HttpParseException("Request must have exactly one Host header.");
 
-        bytesReadCount += totalHeaderBytes;
+        consumed = totalHeaderBytes;
         return true;
     }
 

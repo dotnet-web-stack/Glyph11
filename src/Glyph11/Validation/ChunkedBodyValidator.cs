@@ -1,3 +1,4 @@
+using Glyph11.Parser;
 
 namespace Glyph11.Validation;
 
@@ -9,12 +10,23 @@ public static class ChunkedBodyValidator
     private const int MaxChunkExtensionBytes = 4096;
 
     /// <summary>
-    /// Validates chunked body format.
+    /// Validates chunked body format under <see cref="ParserLimits.Default"/>.
     /// Returns true if valid and complete.
     /// Returns false if incomplete (need more data).
     /// Throws <see cref="HttpParseException"/> if malformed.
     /// </summary>
     public static bool TryValidate(ReadOnlySpan<byte> body, out int bytesConsumed)
+        => TryValidate(body, ParserLimits.Default, out bytesConsumed);
+
+    /// <summary>
+    /// Validates chunked body format, enforcing <paramref name="limits"/> (today:
+    /// <see cref="ParserLimits.MaxTotalTrailerBytes"/>).
+    /// Returns true if valid and complete.
+    /// Returns false if incomplete (need more data).
+    /// Throws <see cref="HttpParseException"/> if malformed, or with status 431 when the trailer
+    /// section exceeds the limit.
+    /// </summary>
+    public static bool TryValidate(ReadOnlySpan<byte> body, in ParserLimits limits, out int bytesConsumed)
     {
         bytesConsumed = 0;
         int pos = 0;
@@ -42,7 +54,10 @@ public static class ChunkedBodyValidator
             int digitCount = 0;
             while (pos < body.Length && IsHexDigit(body[pos]))
             {
-                if (digitCount >= 16) // overflow guard: 16 hex digits = 64 bits
+                // At most 16 digits, and none may take the size to 2^63 or more: a long cannot
+                // hold that, and the shift would turn it negative. Below 15 digits the size is
+                // under 2^56 and cannot, so until then this is one comparison.
+                if (digitCount >= 15 && (digitCount >= 16 || chunkSize > (long.MaxValue >> 4)))
                     throw new HttpParseException("Chunk size overflow.");
 
                 chunkSize = (chunkSize << 4) | (uint)HexVal(body[pos]);
@@ -110,6 +125,8 @@ public static class ChunkedBodyValidator
             // --- Last chunk (size == 0): parse optional trailers ---
             if (chunkSize == 0)
             {
+                int trailerStart = pos;
+
                 // Trailers: zero or more header lines, terminated by CRLF
                 while (true)
                 {
@@ -145,13 +162,24 @@ public static class ChunkedBodyValidator
                         pos++;
                     }
 
+                    // Cap the trailer section — the bytes seen so far, finished or not, so an
+                    // endless one is refused rather than waited on. A CR that ends the input may
+                    // be half of the final CRLF, so it is not counted yet.
+                    int seen = pos - trailerStart;
+                    if (!foundCrlf && body[pos - 1] == (byte)'\r')
+                        seen--;
+                    if (seen > limits.MaxTotalTrailerBytes)
+                        throw new HttpParseException("Chunked trailer section exceeds limit.", statusCode: 431);
+
                     if (!foundCrlf)
                         return false; // incomplete trailer line
                 }
             }
 
             // --- Read chunk data (exactly chunkSize bytes) ---
-            if (pos + chunkSize > body.Length)
+            // Compared against what is left rather than as pos + chunkSize, which overflows for
+            // sizes near long.MaxValue.
+            if (chunkSize > body.Length - pos)
                 return false; // incomplete
 
             // Check for NUL-spill: data claims to extend beyond what was sent
