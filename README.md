@@ -40,7 +40,7 @@ var limits  = ParserLimits.Default;
 ReadOnlySequence<byte> buffer = new(Encoding.ASCII.GetBytes(
     "GET /api/users?page=1 HTTP/1.1\r\nHost: example.com\r\nAccept: */*\r\n\r\n"));
 
-if (UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in limits, out int bytesRead))
+if (UltraHardenedParser.TryParseRequestHeader(ref buffer, request, in limits, out int consumed))
 {
     Console.WriteLine(Encoding.ASCII.GetString(request.Method.Span)); // GET
     Console.WriteLine(Encoding.ASCII.GetString(request.Path.Span));   // /api/users
@@ -50,12 +50,18 @@ if (UltraHardenedParser.TryExtractFullHeaderValidated(ref buffer, request, in li
         var (name, value) = request.Headers[i];                       // zero-copy slices
         Console.WriteLine($"{Encoding.ASCII.GetString(name.Span)}: {Encoding.ASCII.GetString(value.Span)}");
     }
-    // advance your reader by bytesRead; reuse `request` across calls (the parser clears it first).
+    // the body (if any) starts at `consumed`: advance your reader by it; reuse `request` across calls (the parser clears it first).
 }
 // throws HttpParseException on a protocol/semantic violation; returns false if incomplete.
 ```
 
-`TryExtractFullHeaderROM(ref ReadOnlyMemory<byte>, …)` is the single-buffer fast path.
+The `TryParseRequestHeader(ref ReadOnlyMemory<byte>, …)` overload is the single-buffer fast path;
+`TryParseResponseHeader` parses responses the same way.
+
+> **Migrating from `TryExtractFullHeaderROM` / `TryExtractFullHeaderValidated` (and the response and
+> `FlexibleParser` equivalents):** those are obsolete since 0.4.0. They report one less than the bytes
+> consumed, which is why callers added 1; the `TryParse*Header` methods report the header length itself.
+> Switch to the new name and drop the `+ 1`.
 
 ## Glyph11.Native — C core via P/Invoke
 

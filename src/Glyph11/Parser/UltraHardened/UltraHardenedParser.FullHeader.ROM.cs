@@ -25,12 +25,21 @@ public static partial class UltraHardenedParser
     /// structurally or semantically invalid.
     /// </para>
     /// </summary>
+    /// <param name="input">Contiguous buffer holding the request header (and possibly more).</param>
+    /// <param name="request">Target to populate with parsed request data.</param>
+    /// <param name="limits">Resource limits to enforce during parsing.</param>
+    /// <param name="consumed">
+    /// On success, the length of the header block including its terminating CRLFCRLF: the body,
+    /// if any, starts at <c>input[consumed]</c>. 0 when the method returns <c>false</c>.
+    /// </param>
+    /// <returns><c>true</c> if a complete header was parsed and validated; <c>false</c> if more data is needed.</returns>
+    /// <exception cref="HttpParseException">Thrown on any protocol or semantic violation.</exception>
     [SkipLocalsInit]
-    public static bool TryExtractFullHeaderROM(
+    public static bool TryParseRequestHeader(
         ref ReadOnlyMemory<byte> input, BinaryRequest request,
-        in ParserLimits limits, out int bytesReadCount)
+        in ParserLimits limits, out int consumed)
     {
-        bytesReadCount = -1;
+        consumed = 0;
         var span = input.Span;
 
         int headerEnd = span.IndexOf(ParserConstants.CrlfCrlf);
@@ -300,7 +309,7 @@ public static partial class UltraHardenedParser
         if (hostCount != 1)
             throw new HttpParseException("Request must have exactly one Host header.");
 
-        bytesReadCount += totalHeaderBytes;
+        consumed = totalHeaderBytes;
         return true;
     }
 
