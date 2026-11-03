@@ -42,7 +42,10 @@ public static class ChunkedBodyValidator
             int digitCount = 0;
             while (pos < body.Length && IsHexDigit(body[pos]))
             {
-                if (digitCount >= 16) // overflow guard: 16 hex digits = 64 bits
+                // At most 16 digits, and none may take the size to 2^63 or more: a long cannot
+                // hold that, and the shift would turn it negative. Below 15 digits the size is
+                // under 2^56 and cannot, so until then this is one comparison.
+                if (digitCount >= 15 && (digitCount >= 16 || chunkSize > (long.MaxValue >> 4)))
                     throw new HttpParseException("Chunk size overflow.");
 
                 chunkSize = (chunkSize << 4) | (uint)HexVal(body[pos]);
@@ -151,7 +154,9 @@ public static class ChunkedBodyValidator
             }
 
             // --- Read chunk data (exactly chunkSize bytes) ---
-            if (pos + chunkSize > body.Length)
+            // Compared against what is left rather than as pos + chunkSize, which overflows for
+            // sizes near long.MaxValue.
+            if (chunkSize > body.Length - pos)
                 return false; // incomplete
 
             // Check for NUL-spill: data claims to extend beyond what was sent
