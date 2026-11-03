@@ -36,6 +36,14 @@ public readonly record struct ParserLimits
     /// <summary>Maximum total size of the header block including request line and terminators (default 1048576).</summary>
     public int MaxTotalHeaderBytes { get; init; }
 
+    /// <summary>
+    /// Maximum total size of a chunked body's trailer section in bytes: every trailer field line
+    /// after the last chunk, including its CRLF (default 16384). Enforced by
+    /// <see cref="ChunkedBodyStream"/> and <see cref="Validation.ChunkedBodyValidator"/>; exceeding
+    /// it is a 431, like an oversized header block.
+    /// </summary>
+    public int MaxTotalTrailerBytes { get; init; }
+
     /// <summary>Returns a <see cref="ParserLimits"/> with safe production defaults.</summary>
     public static ParserLimits Default => new()
     {
@@ -46,6 +54,26 @@ public readonly record struct ParserLimits
         MaxQueryParameterCount = 128,
         MaxMethodLength = 16,
         MaxReasonPhraseLength = 512,
-        MaxTotalHeaderBytes = 1_048_576
+        MaxTotalHeaderBytes = 1_048_576,
+        MaxTotalTrailerBytes = 16_384
     };
+
+    // ---- Leniencies (all off by default) ----
+
+    /// <summary>
+    /// Accept messages whose lines end in a bare LF instead of CRLF (default <c>false</c>).
+    /// <para>
+    /// RFC 9112 §2.2 lets a recipient recognize a single LF as a line terminator. It is accepted
+    /// only uniformly: the message's first line terminator decides its style, a bare-LF message
+    /// must use bare LF throughout (its header section ends at the first empty line), and a
+    /// message that mixes CRLF and bare LF is still rejected — mixing is where two parsers
+    /// disagree about where a line ended. A message that starts with CRLF gets the strict rules.
+    /// </para>
+    /// <para>
+    /// Enable it for a client reading responses from an origin it chose, with no intermediary in
+    /// between. Never enable it on a server in front of or behind other HTTP implementations:
+    /// bare LF is a request-smuggling primitive precisely because implementations disagree on it.
+    /// </para>
+    /// </summary>
+    public bool AllowBareLf { get; init; }
 }

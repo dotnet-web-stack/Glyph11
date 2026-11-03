@@ -3,14 +3,6 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
-# Native binaries staged per-RID for the Glyph11.Native NuGet (produced by the
-# package-native CI matrix, never committed).
-bindings/dotnet/Glyph11.Native/runtimes/
-
-# Glyph11.Pico native build + staged binaries (CMake build dir, per-RID staging).
-bindings/dotnet/Glyph11.Pico/native/build/
-bindings/dotnet/Glyph11.Pico/runtimes/
-
 # User-specific files
 *.rsuser
 *.suo

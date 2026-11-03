@@ -63,8 +63,9 @@ public static class ParserConstants
         => span.IndexOfAnyExcept(FieldValueSearchValues) < 0;
 
     /// <summary>
-    /// HTTP-version = "HTTP/" DIGIT "." DIGIT  (RFC 9112 §2.6)
-    /// Exactly 8 bytes, case-sensitive.
+    /// HTTP-version = "HTTP/" DIGIT "." DIGIT  (RFC 9112 §2.3)
+    /// Exactly 8 bytes, case-sensitive — and one of the two versions this parser implements,
+    /// <c>HTTP/1.0</c> or <c>HTTP/1.1</c>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsValidHttpVersion(ReadOnlySpan<byte> span)
@@ -78,6 +79,25 @@ public static class ParserConstants
             && span[5] == (byte)'1'
             && span[6] == (byte)'.'
             && (span[7] == (byte)'0' || span[7] == (byte)'1');
+    }
+
+    /// <summary>
+    /// True if <paramref name="span"/> matches the HTTP-version grammar
+    /// (<c>"HTTP/" DIGIT "." DIGIT</c>, exactly 8 bytes, case-sensitive — RFC 9112 §2.3), whatever
+    /// the digits. Separates a version the parser does not implement (505) from bytes that are not
+    /// an HTTP-version at all (400).
+    /// </summary>
+    internal static bool IsWellFormedHttpVersion(ReadOnlySpan<byte> span)
+    {
+        return span.Length == 8
+            && span[0] == (byte)'H'
+            && span[1] == (byte)'T'
+            && span[2] == (byte)'T'
+            && span[3] == (byte)'P'
+            && span[4] == (byte)'/'
+            && IsDigit(span[5])
+            && span[6] == (byte)'.'
+            && IsDigit(span[7]);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

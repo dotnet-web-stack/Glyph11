@@ -3,6 +3,9 @@
     <PropertyGroup>
         <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
         <IsPackable>false</IsPackable>
+        <!-- The suites keep exercising the obsolete TryExtract* entry points on purpose: they still
+             ship and must keep their exact (length - 1) behaviour until they are removed. -->
+        <NoWarn>$(NoWarn);CS0618</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>

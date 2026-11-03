@@ -27,24 +27,30 @@ public static partial class UltraHardenedParser
     /// <see cref="Validation.BodyFramingDetector.DetectResponseBodyFraming"/>.
     /// </para>
     /// </remarks>
+    /// <param name="input">Contiguous buffer holding the response header (and possibly more).</param>
+    /// <param name="response">Target to populate with parsed response data.</param>
+    /// <param name="limits">Resource limits to enforce during parsing.</param>
+    /// <param name="consumed">
+    /// On success, the length of the header block including its terminating CRLFCRLF: the body,
+    /// if any, starts at <c>input[consumed]</c>. 0 when the method returns <c>false</c>.
+    /// </param>
+    /// <returns><c>true</c> if a complete header was parsed and validated; <c>false</c> if more data is needed.</returns>
+    /// <exception cref="HttpParseException">Thrown on any protocol or semantic violation.</exception>
     [SkipLocalsInit]
-    public static bool TryExtractFullResponseHeaderROM(
+    public static bool TryParseResponseHeader(
         ref ReadOnlyMemory<byte> input, BinaryResponse response,
-        in ParserLimits limits, out int bytesReadCount)
+        in ParserLimits limits, out int consumed)
     {
-        bytesReadCount = -1;
+        consumed = 0;
         var span = input.Span;
 
-        int headerEnd = span.IndexOf(ParserConstants.CrlfCrlf);
-        if (headerEnd < 0) return false;
-
-        int totalHeaderBytes = headerEnd + 4;
-        if (totalHeaderBytes > limits.MaxTotalHeaderBytes)
-            throw new HttpParseException("Total header size exceeds limit.", statusCode: 431);
+        // ---- End of the header section, its line terminator, its size — RFC 9112 §2.2 ----
+        if (!TryLocateHeaderSection(span, limits, out int totalHeaderBytes, out ReadOnlySpan<byte> eol))
+            return false;
 
         // ---- Status line: HTTP-version SP status-code SP [ reason-phrase ] CRLF — RFC 9112 §4 ----
 
-        int statusLineEnd = span.IndexOf(ParserConstants.Crlf);
+        int statusLineEnd = span.IndexOf(eol);
         if (statusLineEnd < 0)
             throw new HttpParseException("Invalid HTTP/1.1 status line.");
 
@@ -59,9 +65,17 @@ public static partial class UltraHardenedParser
             throw new HttpParseException("Invalid status line: missing status code.");
 
         // --- Version ---
+        // Same rule as the request line: a well-formed version this parser does not implement is
+        // 505, anything else in this position is a malformed status line, 400.
         var versionSpan = statusLine[..firstSpace];
         if (!ParserConstants.IsValidHttpVersion(versionSpan))
-            throw new HttpParseException("Invalid HTTP version.", 505);
+            throw ParserConstants.IsWellFormedHttpVersion(versionSpan)
+                ? new HttpParseException("Unsupported HTTP version.", 505)
+                : new HttpParseException("Invalid HTTP version.");
+
+        // ---- The parser owns the target: nothing from a previous message may carry over ----
+        // Cleared here, at the first write, so an incomplete call (false) leaves it untouched.
+        response.Clear();
 
         response.Version = input[..firstSpace];
 
@@ -78,9 +92,11 @@ public static partial class UltraHardenedParser
 
         int status = ((codeSpan[0] - '0') * 100) + ((codeSpan[1] - '0') * 10) + (codeSpan[2] - '0');
 
-        // A three-digit code below 100 is well-formed but not a status — 0xx has no meaning and
-        // treating it as one lets a garbage first line pass as a response.
-        if (status < 100)
+        // RFC 9110 §15 — valid status codes are 100-599. A three-digit code outside that range is
+        // well-formed but not a status: 0xx and 6xx-9xx have no meaning, treating one as a status
+        // lets a garbage first line pass as a response, and a caller branching on the class
+        // (1xx, 2xx, ...) would meet classes that do not exist.
+        if (status is < 100 or > 599)
             throw new HttpParseException("Status code must be in the range 100-599.");
 
         response.StatusCode = input.Slice(codeStart, 3);
@@ -118,7 +134,7 @@ public static partial class UltraHardenedParser
 
         // ---- Headers (structural parse + inline semantic checks) ----
 
-        int lineStart = statusLineEnd + 2;
+        int lineStart = statusLineEnd + eol.Length;
         int headerCount = 0;
 
         // Semantic state tracked across headers
@@ -128,7 +144,7 @@ public static partial class UltraHardenedParser
 
         while (true)
         {
-            int lineLen = span[lineStart..].IndexOf(ParserConstants.Crlf);
+            int lineLen = span[lineStart..].IndexOf(eol);
             if (lineLen < 0)
                 throw new HttpParseException("Invalid headers.");
 
@@ -223,7 +239,7 @@ public static partial class UltraHardenedParser
                     throw new HttpParseException("Invalid Transfer-Encoding value; only 'chunked' is accepted.");
             }
 
-            lineStart += lineLen + 2;
+            lineStart += lineLen + eol.Length;
         }
 
         // ---- Post-loop cross-header semantic checks ----
@@ -234,7 +250,7 @@ public static partial class UltraHardenedParser
         if (hasTE && hasCL)
             throw new HttpParseException("Both Transfer-Encoding and Content-Length are present.");
 
-        bytesReadCount += totalHeaderBytes;
+        consumed = totalHeaderBytes;
         return true;
     }
 }

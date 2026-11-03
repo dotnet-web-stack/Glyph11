@@ -10,41 +10,50 @@ public static partial class UltraHardenedParser
     /// checks.
     /// <para>
     /// Single-segment input is dispatched to the zero-copy validated ROM path.
-    /// Multi-segment input is checked for completeness (<c>\r\n\r\n</c>), then linearized
-    /// via <c>ToArray()</c> and parsed through the validated ROM path.
+    /// Multi-segment input is checked for completeness (<c>\r\n\r\n</c>) and against
+    /// <see cref="ParserLimits.MaxTotalHeaderBytes"/>, then its header block alone is linearized
+    /// (the body is never copied) and parsed through the validated ROM path.
     /// </para>
     /// </summary>
     /// <param name="input">Input buffer from the network layer.</param>
     /// <param name="response">Target to populate with parsed response data.</param>
     /// <param name="limits">Resource limits to enforce during parsing.</param>
-    /// <param name="bytesReadCount">Bytes consumed on success, or -1 if incomplete.</param>
+    /// <param name="consumed">
+    /// On success, the length of the header block including its terminating CRLFCRLF: the body,
+    /// if any, starts at <c>input.Slice(consumed)</c>. 0 when the method returns <c>false</c>.
+    /// </param>
     /// <returns><c>true</c> if a complete header was parsed and validated; <c>false</c> if more data is needed.</returns>
     /// <exception cref="HttpParseException">Thrown on any protocol or semantic violation.</exception>
     /// <remarks>
-    /// A client that already holds the response in one contiguous buffer should call
-    /// <see cref="TryExtractFullResponseHeaderROM"/> directly and skip the linearizing copy — a
-    /// response header spanning segments is the common case on a socket, not the rare one.
+    /// A client that already holds the response in one contiguous buffer should call the
+    /// <see cref="TryParseResponseHeader(ref ReadOnlyMemory{byte}, BinaryResponse, in ParserLimits, out int)"/>
+    /// overload directly and skip the linearizing copy — a response header spanning segments is
+    /// the common case on a socket, not the rare one.
     /// </remarks>
-    public static bool TryExtractFullResponseHeaderValidated(
+    public static bool TryParseResponseHeader(
         ref ReadOnlySequence<byte> input, BinaryResponse response,
-        in ParserLimits limits, out int bytesReadCount)
+        in ParserLimits limits, out int consumed)
     {
         if (input.IsSingleSegment)
         {
             ReadOnlyMemory<byte> singleMemorySegment = input.First;
-            return TryExtractFullResponseHeaderROM(ref singleMemorySegment, response, in limits, out bytesReadCount);
+            return TryParseResponseHeader(ref singleMemorySegment, response, in limits, out consumed);
         }
 
-        // Check for header completeness before allocating
+        // Check for header completeness before allocating (throws if bare LF already settles it)
         var reader = new SequenceReader<byte>(input);
-        if (!reader.TryReadTo(out ReadOnlySequence<byte> _, ParserConstants.CrlfCrlf, advancePastDelimiter: true))
+        if (!TryReadPastHeaderEnd(ref reader, in limits))
         {
-            bytesReadCount = -1;
+            consumed = 0;
             return false;
         }
 
-        // Linearize: copy all segments into a single contiguous array, then parse via ROM
-        ReadOnlyMemory<byte> mem = input.ToArray();
-        return TryExtractFullResponseHeaderROM(ref mem, response, in limits, out bytesReadCount);
+        // Linearize the header block only — never the body behind it — and only once it is known
+        // to fit: reader.Consumed is the block's length, CRLFCRLF included.
+        if (reader.Consumed > limits.MaxTotalHeaderBytes)
+            throw new HttpParseException("Total header size exceeds limit.", statusCode: 431);
+
+        ReadOnlyMemory<byte> mem = input.Slice(0, reader.Consumed).ToArray();
+        return TryParseResponseHeader(ref mem, response, in limits, out consumed);
     }
 }

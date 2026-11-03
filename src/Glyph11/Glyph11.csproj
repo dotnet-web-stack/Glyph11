@@ -7,9 +7,9 @@
         <Description>Dependency free, low allocation HTTP/1.1 parser for C#.</Description>
         <PackageTags>C# HTTP Protocol Parser</PackageTags>
 
-        <AssemblyVersion>0.3.7.0</AssemblyVersion>
-        <FileVersion>0.3.7.0</FileVersion>
-        <Version>0.3.7</Version>
+        <AssemblyVersion>0.4.0.0</AssemblyVersion>
+        <FileVersion>0.4.0.0</FileVersion>
+        <Version>0.4.0</Version>
 
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
@@ -27,10 +27,5 @@
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
 
     </PropertyGroup>
-
-    <ItemGroup>
-        <!-- The pico-backed parser populates BinaryRequest/KeyValueList internals. -->
-        <InternalsVisibleTo Include="Glyph11.Pico" />
-    </ItemGroup>
 
 </Project>

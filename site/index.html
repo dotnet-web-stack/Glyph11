@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Glyph11 — hardened HTTP/1.1 parser for .NET</title>
-<meta name="description" content="A zero-allocation, hardened HTTP/1.1 request parser for .NET — pure managed, native C core, or picohttpparser-fast. Three NuGet packages, one BinaryRequest.">
+<meta name="description" content="A zero-allocation, hardened HTTP/1.1 request parser for .NET — pure managed and dependency-free.">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" media="(prefers-color-scheme: light)">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
@@ -16,10 +16,8 @@
     <a class="brand" href="index.html">Glyph<b>11</b></a>
     <nav>
       <a href="index.html" class="active">Overview</a>
-      <div class="group">Packages</div>
+      <div class="group">Package</div>
       <a href="glyph11.html">Glyph11</a>
-      <a href="glyph11-native.html">Glyph11.Native</a>
-      <a href="glyph11-pico.html">Glyph11.Pico</a>
       <div class="group">Reference</div>
       <a href="benchmarks.html">Benchmarks</a>
       <div class="sb-foot">
@@ -33,61 +31,25 @@
     <span class="tag">HTTP/1.1 · .NET 8 / 9 / 10</span>
     <h1>A hardened HTTP/1.1 parser for .NET</h1>
     <p class="lead">Zero-allocation request parsing with full RFC 9110/9112 validation, resource limits, and
-    request-smuggling defenses — fused into a single zero-copy pass. Pure managed, native C core, or
-    picohttpparser-fast: three packages, one <code>BinaryRequest</code>.</p>
+    request-smuggling defenses — fused into a single zero-copy pass, in pure C#.</p>
 
-    <h2>Pick a package</h2>
+    <h2>Get started</h2>
     <div class="cards">
       <div class="card">
         <h3><a href="glyph11.html">Glyph11 →</a></h3>
         <p>The hardened parser in <b>pure C#</b>. Dependency-free, runs on any .NET target. Full validation, returns a <code>BinaryRequest</code>.</p>
       </div>
-      <div class="card">
-        <h3><a href="glyph11-native.html">Glyph11.Native →</a></h3>
-        <p>The <b>same validation via the C core</b> (P/Invoke), at native speed. Zero allocation; native binary bundled for 6 RIDs.</p>
-      </div>
-      <div class="card">
-        <h3><a href="glyph11-pico.html">Glyph11.Pico →</a></h3>
-        <p><b>Fastest</b> path to a <code>BinaryRequest</code>: picohttpparser tokenizes, managed glue fills the request. picohttpparser-level validation only.</p>
-      </div>
     </div>
+    <p><code>Glyph11.Native</code> and <code>Glyph11.Pico</code> are discontinued: their published versions stay on NuGet, but they get no further releases.</p>
 
     <h2>Install</h2>
-    <pre><code class="language-bash"># the hardened, dependency-free parser
-dotnet add package Glyph11
-
-# the C core via P/Invoke (native binaries bundled)
-dotnet add package Glyph11.Native
-
-# the picohttpparser-backed fast parser
-dotnet add package Glyph11.Pico</code></pre>
-
-    <h2>At a glance</h2>
-    <table>
-      <thead><tr><th>Package</th><th>Engine</th><th>Output</th><th>Validation</th><th>Dependencies</th></tr></thead>
-      <tbody>
-        <tr><td><a href="glyph11.html">Glyph11</a></td><td>pure C#</td><td><code>BinaryRequest</code></td><td>full (RFC + smuggling)</td><td>none</td></tr>
-        <tr><td><a href="glyph11-native.html">Glyph11.Native</a></td><td>C core / P/Invoke</td><td>raw field spans</td><td>full (same as managed)</td><td><code>libglyph11</code> per RID</td></tr>
-        <tr><td><a href="glyph11-pico.html">Glyph11.Pico</a></td><td>picohttpparser</td><td><code>BinaryRequest</code></td><td>picohttpparser only</td><td><code>libglyph11pico</code> + <code>Glyph11</code></td></tr>
-      </tbody>
-    </table>
-    <p><code>Glyph11</code> and <code>Glyph11.Pico</code> fill the <b>identical</b> <code>BinaryRequest</code>, so swapping between them is a one-line change.</p>
-
-    <h2>Which one?</h2>
-    <table>
-      <thead><tr><th>If you want…</th><th>Use</th></tr></thead>
-      <tbody>
-        <tr><td>Maximum portability, zero native deps, full hardening</td><td><a href="glyph11.html"><code>Glyph11</code></a></td></tr>
-        <tr><td>The hardened parser at native speed, zero allocation</td><td><a href="glyph11-native.html"><code>Glyph11.Native</code></a></td></tr>
-        <tr><td>The fastest path to a <code>BinaryRequest</code>, validating elsewhere</td><td><a href="glyph11-pico.html"><code>Glyph11.Pico</code></a></td></tr>
-      </tbody>
-    </table>
+    <pre><code class="language-bash">dotnet add package Glyph11</code></pre>
 
     <h2>Performance</h2>
     <p>Contiguous request parse, 32&nbsp;KB header block, <code>linux-x64</code>, ns/op (lower is better):</p>
     <table>
-      <thead><tr><th>Glyph11</th><th class="num">Glyph11.Native</th><th class="num">Glyph11.Pico</th></tr></thead>
-      <tbody><tr><td class="num">5251 ns</td><td class="num">3752 ns</td><td class="num best">3370 ns</td></tr></tbody>
+      <thead><tr><th>Glyph11</th></tr></thead>
+      <tbody><tr><td class="num">5251 ns</td></tr></tbody>
     </table>
     <p>See the <a href="benchmarks.html">benchmarks</a> for contiguous, multi-segment, and chunked across all sizes.</p>
 
@@ -95,7 +57,7 @@ dotnet add package Glyph11.Pico</code></pre>
       <span></span>
       <a href="glyph11.html">Glyph11 →</a>
     </div>
-    <footer class="docfoot">MIT licensed · <a href="https://github.com/dotnet-web-stack/Glyph11">github.com/dotnet-web-stack/Glyph11</a> · Glyph11.Pico bundles picohttpparser (MIT/Perl)</footer>
+    <footer class="docfoot">MIT licensed · <a href="https://github.com/dotnet-web-stack/Glyph11">github.com/dotnet-web-stack/Glyph11</a></footer>
   </div></main>
 </div>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
