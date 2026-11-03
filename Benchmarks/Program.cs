@@ -39,17 +39,17 @@ Table(requests, (label, bytes) =>
 {
     var rom = (ReadOnlyMemory<byte>)bytes;
     long it = Iters(bytes.Length);
-    double glyph = Best(it, () => { managedRequest.Clear(); var r = rom; UltraHardenedParser.TryExtractFullHeaderROM(ref r, managedRequest, in managedLimits, out _); });
+    double glyph = Best(it, () => { var r = rom; UltraHardenedParser.TryParseRequestHeader(ref r, managedRequest, in managedLimits, out _); });
     return glyph;
 });
 
-// ---- multi-segment request parsing (3 segments, linearized per request, then parsed) ----
+// ---- multi-segment request parsing (3 segments; the parser linearizes only the header block) ----
 Console.WriteLine("\nRequest header parsing — multi-segment");
 Table(requests, (label, bytes) =>
 {
     var seq = ThreeSegments(bytes);
     long it = Iters(bytes.Length);
-    double glyph = Best(it, () => { managedRequest.Clear(); var s = seq; UltraHardenedParser.TryExtractFullHeaderValidated(ref s, managedRequest, in managedLimits, out _); });
+    double glyph = Best(it, () => { var s = seq; UltraHardenedParser.TryParseRequestHeader(ref s, managedRequest, in managedLimits, out _); });
     return glyph;
 });
 
