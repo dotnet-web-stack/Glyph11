@@ -10,7 +10,10 @@ public enum ChunkResult : byte
     /// <summary>Incomplete data — wait for more bytes from the pipe.</summary>
     NeedMoreData,
 
-    /// <summary>A complete chunk's decoded payload is available.</summary>
+    /// <summary>
+    /// Decoded payload bytes are available: a whole chunk, or the part of one that has arrived so
+    /// far (never empty). Chunk boundaries carry no meaning, so append the bytes and call again.
+    /// </summary>
     Chunk,
 
     /// <summary>Terminal chunk (and any trailers) consumed — body is done.</summary>
@@ -21,6 +24,11 @@ public enum ChunkResult : byte
 /// Stateful streaming parser for chunked transfer-encoding (RFC 9112 §7.1).
 /// Validates chunks incrementally so the caller can advance a PipeReader
 /// after each call without re-parsing from byte 0.
+/// <para>
+/// Chunk data is handed out as it arrives rather than once the whole chunk is buffered, so the
+/// caller's buffer is bounded by its read window, not by the size a peer declares. The trailer
+/// section is capped by <see cref="ParserLimits.MaxTotalTrailerBytes"/>.
+/// </para>
 /// </summary>
 public struct ChunkedBodyStream
 {
@@ -37,11 +45,29 @@ public struct ChunkedBodyStream
         Complete,
     }
 
+    // The limit fields sit in the padding after the byte-sized phase, keeping the state at the
+    // 32 bytes it had: every call copies it (the NeedMoreData rollback snapshot).
     private Phase _phase;          // starts at ChunkSize
+    private bool _hasLimits;       // false for new ChunkedBodyStream(): ParserLimits.Default applies
+    private int _maxTrailerBytes;  // trailer section cap, when constructed with limits
     private long _chunkSize;       // parsed size for current chunk
     private long _remaining;       // bytes left in ChunkData phase
     private int _digitCount;       // hex digits seen in ChunkSize
     private int _extensionBytes;   // extension bytes (4096 limit)
+
+    /// <summary>
+    /// Creates a decoder that enforces <paramref name="limits"/> (today:
+    /// <see cref="ParserLimits.MaxTotalTrailerBytes"/>). <c>new ChunkedBodyStream()</c> applies
+    /// <see cref="ParserLimits.Default"/>.
+    /// </summary>
+    public ChunkedBodyStream(in ParserLimits limits) : this()
+    {
+        _maxTrailerBytes = limits.MaxTotalTrailerBytes;
+        _hasLimits = true;
+    }
+
+    private readonly int MaxTrailerBytes
+        => _hasLimits ? _maxTrailerBytes : ParserLimits.Default.MaxTotalTrailerBytes;
 
     /// <summary>
     /// Reads the next chunk from <paramref name="input"/>.
@@ -52,11 +78,16 @@ public struct ChunkedBodyStream
     /// <param name="dataOffset">Offset within <paramref name="input"/> where chunk payload starts (valid when result is <see cref="ChunkResult.Chunk"/>).</param>
     /// <param name="dataLength">Length of chunk payload bytes (valid when result is <see cref="ChunkResult.Chunk"/>).</param>
     /// <returns>
-    /// <see cref="ChunkResult.Chunk"/>: payload at input[dataOffset..dataOffset+dataLength], advance by bytesConsumed.<br/>
+    /// <see cref="ChunkResult.Chunk"/>: payload at input[dataOffset..dataOffset+dataLength] — a whole chunk or the
+    /// part of one that has arrived, never empty — advance by bytesConsumed.<br/>
     /// <see cref="ChunkResult.Completed"/>: terminal chunk consumed, body is done.<br/>
-    /// <see cref="ChunkResult.NeedMoreData"/>: incomplete, wait for more from pipe.
+    /// <see cref="ChunkResult.NeedMoreData"/>: incomplete, nothing consumed — wait for more from pipe and
+    /// re-present the same bytes.
     /// </returns>
-    /// <exception cref="HttpParseException">Thrown on malformed chunked encoding.</exception>
+    /// <exception cref="HttpParseException">
+    /// Thrown on malformed chunked encoding, or (status 431) when the trailer section exceeds
+    /// <see cref="ParserLimits.MaxTotalTrailerBytes"/>.
+    /// </exception>
     public ChunkResult TryReadChunk(
         ReadOnlySpan<byte> input,
         out int bytesConsumed,
@@ -67,6 +98,7 @@ public struct ChunkedBodyStream
         dataOffset = 0;
         dataLength = 0;
         int pos = 0;
+        int trailerStart = 0;   // where the trailer section begins; it is always parsed within one call
 
         // Snapshot state so we can roll back on NeedMoreData.
         // The caller re-presents the same bytes, so partial state must not persist.
@@ -172,6 +204,7 @@ public struct ChunkedBodyStream
                     {
                         // Terminal chunk — move to trailers
                         _phase = Phase.Trailers;
+                        trailerStart = pos;
                         continue;
                     }
 
@@ -183,16 +216,22 @@ public struct ChunkedBodyStream
 
                 case Phase.ChunkData:
                 {
-                    int available = input.Length - pos;
+                    int available = input.Length - pos;   // >= 1: the loop only runs while input remains
                     if (available < _remaining)
                     {
-                        this = snapshot;
-                        return ChunkResult.NeedMoreData;
+                        // Hand out what has arrived instead of waiting for the whole chunk: the
+                        // caller's buffer is then bounded by its read window, not by whatever size
+                        // the peer declared. The rest of the chunk follows on later calls.
+                        dataOffset = pos;
+                        dataLength = available;
+                        _remaining -= available;
+                        bytesConsumed = input.Length;
+                        return ChunkResult.Chunk;
                     }
 
-                    // All chunk data is present
+                    // The rest of the chunk's data is present
                     dataOffset = pos;
-                    dataLength = (int)_chunkSize;
+                    dataLength = (int)_remaining;
                     pos += (int)_remaining;
                     _remaining = 0;
                     _phase = Phase.DataCrlf;
@@ -203,6 +242,14 @@ public struct ChunkedBodyStream
                 {
                     if (pos + 1 >= input.Length)
                     {
+                        // The CRLF after the data has not arrived. Data read by this call is
+                        // handed out anyway — the CRLF is checked on the next call.
+                        if (dataLength > 0)
+                        {
+                            bytesConsumed = pos;
+                            return ChunkResult.Chunk;
+                        }
+
                         this = snapshot;
                         return ChunkResult.NeedMoreData;
                     }
@@ -221,8 +268,14 @@ public struct ChunkedBodyStream
                     _digitCount = 0;
                     _extensionBytes = 0;
 
-                    bytesConsumed = pos;
-                    return ChunkResult.Chunk;
+                    if (dataLength > 0)
+                    {
+                        bytesConsumed = pos;
+                        return ChunkResult.Chunk;
+                    }
+
+                    // The data was handed out by an earlier call: go on to the next chunk.
+                    continue;
                 }
 
                 case Phase.Trailers:
@@ -257,6 +310,16 @@ public struct ChunkedBodyStream
                         pos++;
                     }
 
+                    // The trailer section is re-presented from its start until it completes, so
+                    // cap the bytes seen so far — finished or not — or an endless section is
+                    // buffered forever. A CR that ends the input may be half of the final CRLF,
+                    // so it is not counted yet.
+                    int seen = pos - trailerStart;
+                    if (pos >= input.Length && input[pos - 1] == (byte)'\r')
+                        seen--;
+                    if (seen > MaxTrailerBytes)
+                        throw new HttpParseException("Chunked trailer section exceeds limit.", statusCode: 431);
+
                     if (pos >= input.Length)
                     {
                         this = snapshot;
@@ -274,7 +337,14 @@ public struct ChunkedBodyStream
             }
         }
 
-        // Ran out of input
+        // Ran out of input. A chunk whose data is all here but whose CRLF is not is still
+        // handed out (the CRLF is checked on the next call); anything else waits.
+        if (dataLength > 0)
+        {
+            bytesConsumed = pos;
+            return ChunkResult.Chunk;
+        }
+
         this = snapshot;
         return ChunkResult.NeedMoreData;
     }
@@ -283,9 +353,14 @@ public struct ChunkedBodyStream
     /// Multi-segment overload of <see cref="TryReadChunk(ReadOnlySpan{byte}, out int, out int, out int)"/>.
     /// Reads the next chunk directly from a <see cref="ReadOnlySequence{T}"/> — <b>no linearization</b>.
     /// On <see cref="ChunkResult.Chunk"/>, <paramref name="chunkData"/> is the decoded payload as a
-    /// (possibly multi-segment) slice of <paramref name="input"/>; copy it out before advancing the
-    /// reader past <paramref name="bytesConsumed"/>.
+    /// (possibly multi-segment) slice of <paramref name="input"/> — a whole chunk or the part of one
+    /// that has arrived, never empty; copy it out before advancing the reader past
+    /// <paramref name="bytesConsumed"/>.
     /// </summary>
+    /// <exception cref="HttpParseException">
+    /// Thrown on malformed chunked encoding, or (status 431) when the trailer section exceeds
+    /// <see cref="ParserLimits.MaxTotalTrailerBytes"/>.
+    /// </exception>
     public ChunkResult TryReadChunk(
         in ReadOnlySequence<byte> input,
         out long bytesConsumed,
@@ -297,6 +372,8 @@ public struct ChunkedBodyStream
         var reader = new SequenceReader<byte>(input);
         var snapshot = this;                 // roll back on NeedMoreData — caller re-presents the bytes
         ReadOnlySequence<byte> pending = default;
+        bool hasPending = false;          // cheaper to test than pending.IsEmpty, once per chunk
+        long trailerStart = 0;               // the trailer section is always parsed within one call
 
         while (!reader.End)
         {
@@ -380,6 +457,7 @@ public struct ChunkedBodyStream
                     if (_chunkSize == 0)
                     {
                         _phase = Phase.Trailers;
+                        trailerStart = reader.Consumed;
                         continue;
                     }
                     _remaining = _chunkSize;
@@ -391,10 +469,17 @@ public struct ChunkedBodyStream
                 {
                     if (reader.Remaining < _remaining)
                     {
-                        this = snapshot;
-                        return ChunkResult.NeedMoreData;
+                        // Hand out what has arrived (at least one byte: the loop runs only while
+                        // input remains) instead of buffering the whole declared chunk.
+                        long available = reader.Remaining;
+                        chunkData = reader.UnreadSequence;
+                        reader.Advance(available);
+                        _remaining -= available;
+                        bytesConsumed = reader.Consumed;
+                        return ChunkResult.Chunk;
                     }
                     pending = reader.UnreadSequence.Slice(0, _remaining);
+                    hasPending = true;
                     reader.Advance(_remaining);
                     _remaining = 0;
                     _phase = Phase.DataCrlf;
@@ -405,6 +490,15 @@ public struct ChunkedBodyStream
                 {
                     if (reader.Remaining < 2)
                     {
+                        // The CRLF after the data has not arrived: hand out data read by this call
+                        // anyway — the CRLF is checked on the next call.
+                        if (hasPending)
+                        {
+                            bytesConsumed = reader.Consumed;
+                            chunkData = pending;
+                            return ChunkResult.Chunk;
+                        }
+
                         this = snapshot;
                         return ChunkResult.NeedMoreData;
                     }
@@ -419,9 +513,15 @@ public struct ChunkedBodyStream
                     _digitCount = 0;
                     _extensionBytes = 0;
 
-                    bytesConsumed = reader.Consumed;
-                    chunkData = pending;
-                    return ChunkResult.Chunk;
+                    if (hasPending)
+                    {
+                        bytesConsumed = reader.Consumed;
+                        chunkData = pending;
+                        return ChunkResult.Chunk;
+                    }
+
+                    // The data was handed out by an earlier call: go on to the next chunk.
+                    continue;
                 }
 
                 case Phase.Trailers:
@@ -441,11 +541,23 @@ public struct ChunkedBodyStream
                     // a trailer line, up to CRLF; a bare LF inside it is invalid
                     if (!reader.TryReadTo(out ReadOnlySequence<byte> line, ParserConstants.Crlf, advancePastDelimiter: true))
                     {
+                        // Re-presented from the start of the section until it completes: cap the
+                        // bytes seen so far, or an endless trailer line is buffered forever. A CR
+                        // that ends the input may be half of the final CRLF: not counted yet.
+                        var unread = reader.UnreadSequence;
+                        long seen = reader.Consumed - trailerStart + unread.Length;
+                        if (unread.Slice(unread.Length - 1).FirstSpan[0] == (byte)'\r')
+                            seen--;
+                        if (seen > MaxTrailerBytes)
+                            throw new HttpParseException("Chunked trailer section exceeds limit.", statusCode: 431);
+
                         this = snapshot;
                         return ChunkResult.NeedMoreData;
                     }
                     if (line.PositionOf((byte)'\n') is not null)
                         throw new HttpParseException("Bare LF in chunked trailer.");
+                    if (reader.Consumed - trailerStart > MaxTrailerBytes)
+                        throw new HttpParseException("Chunked trailer section exceeds limit.", statusCode: 431);
                     continue;
                 }
 
@@ -455,6 +567,15 @@ public struct ChunkedBodyStream
                     return ChunkResult.Completed;
                 }
             }
+        }
+
+        // Ran out of input. A chunk whose data is all here but whose CRLF is not is still
+        // handed out (the CRLF is checked on the next call); anything else waits.
+        if (hasPending)
+        {
+            bytesConsumed = reader.Consumed;
+            chunkData = pending;
+            return ChunkResult.Chunk;
         }
 
         this = snapshot;

@@ -166,17 +166,22 @@ public class ChunkedBodyStreamTests
     {
         var stream = new ChunkedBodyStream();
 
-        // Send size line but only partial data
+        // Size line plus part of the data: the part that arrived is handed out at once
         var part1 = B("5\r\nHe");
-        var r1 = stream.TryReadChunk(part1, out var c1, out _, out _);
-        Assert.Equal(ChunkResult.NeedMoreData, r1);
-        Assert.Equal(0, c1);
+        var r1 = stream.TryReadChunk(part1, out var c1, out var off1, out var len1);
+        Assert.Equal(ChunkResult.Chunk, r1);
+        Assert.Equal("He", Encoding.ASCII.GetString(part1.AsSpan(off1, len1)));
+        Assert.Equal(part1.Length, c1);
 
-        // Now send the full chunk
-        var part2 = B("5\r\nHello\r\n0\r\n\r\n");
+        // The rest of the chunk, its CRLF and the terminal chunk
+        var part2 = B("llo\r\n0\r\n\r\n");
         var r2 = stream.TryReadChunk(part2, out var c2, out var off2, out var len2);
         Assert.Equal(ChunkResult.Chunk, r2);
-        Assert.Equal("Hello", Encoding.ASCII.GetString(part2.AsSpan(off2, len2)));
+        Assert.Equal("llo", Encoding.ASCII.GetString(part2.AsSpan(off2, len2)));
+
+        var r3 = stream.TryReadChunk(part2.AsSpan(c2), out var c3, out _, out _);
+        Assert.Equal(ChunkResult.Completed, r3);
+        Assert.Equal(part2.Length - c2, c3);
     }
 
     [Fact]
@@ -229,10 +234,10 @@ public class ChunkedBodyStreamTests
             // NeedMoreData → continue adding bytes
         }
 
+        // Data is handed out as it arrives — one byte at a time here — and never empty.
         Assert.True(completed);
-        Assert.Equal(2, chunks.Count);
-        Assert.Equal("Foo", chunks[0]);
-        Assert.Equal("Hi", chunks[1]);
+        Assert.DoesNotContain("", chunks);
+        Assert.Equal("FooHi", string.Concat(chunks));
     }
 
     [Fact]

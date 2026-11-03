@@ -146,7 +146,8 @@ var limits = ParserLimits.Default with
 };
 
 // Available knobs (all int): MaxHeaderCount, MaxHeaderNameLength, MaxHeaderValueLength,
-// MaxUrlLength, MaxQueryParameterCount, MaxMethodLength, MaxTotalHeaderBytes.</code></pre>
+// MaxUrlLength, MaxQueryParameterCount, MaxMethodLength, MaxTotalHeaderBytes,
+// MaxTotalTrailerBytes (chunked trailer section; pass limits to new ChunkedBodyStream(limits)).</code></pre>
 
     <h2 id="pipereader">Reading from a PipeReader</h2>
     <p>The real-world loop: read, try to parse, and if the buffer doesn't yet hold a full header block,
@@ -187,7 +188,9 @@ var limits = ParserLimits.Default with
     <h2 id="chunked">Chunked bodies</h2>
     <p>After the headers, a <code>Transfer-Encoding: chunked</code> body is decoded with
     <code>ChunkedBodyStream</code> — a small struct state machine you feed bytes to. It tells you where each
-    decoded chunk's payload sits, without copying.</p>
+    decoded chunk's payload sits, without copying. Payload is handed out as it arrives, so a peer's
+    declared chunk size never decides how much you buffer, and the trailer section is capped by
+    <code>ParserLimits.MaxTotalTrailerBytes</code>.</p>
 <pre><code class="language-csharp">using Glyph11.Parser;
 
 var decoder = new ChunkedBodyStream();
@@ -205,13 +208,13 @@ while (true)
 
     switch (r)
     {
-        case ChunkResult.Chunk:        // a payload chunk is ready
+        case ChunkResult.Chunk:        // payload bytes are ready: a whole chunk or the part that arrived
             body.Write(input.AsSpan(offset + dataOffset, dataLength));
             offset += consumed;
             continue;
         case ChunkResult.Completed:    // terminal 0-length chunk seen → body done
             break;
-        case ChunkResult.NeedMoreData: // partial chunk — read more bytes, then call again
+        case ChunkResult.NeedMoreData: // incomplete framing — read more bytes, then call again
             break;
         case ChunkResult.Error:        // malformed chunk framing → reject the request
             throw new InvalidOperationException("bad chunked encoding");
