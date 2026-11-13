@@ -250,6 +250,10 @@ public static partial class UltraHardenedParser
         if (hasTE && hasCL)
             throw new HttpParseException("Both Transfer-Encoding and Content-Length are present.");
 
+        // RFC 9112 §6.1: HTTP/1.0 has no transfer codings, so a hop that speaks only 1.0 frames this body another way.
+        if (hasTE && versionSpan[7] == (byte)'0')
+            throw new HttpParseException("Transfer-Encoding in an HTTP/1.0 message.");
+
         consumed = totalHeaderBytes;
         return true;
     }
