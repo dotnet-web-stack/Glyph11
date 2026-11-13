@@ -624,6 +624,34 @@ public partial class UltraHardenedParserTests
     }
 
     // ================================================================
+    // Transfer-Encoding in HTTP/1.0 (RFC 9112 §6.1)
+    // ================================================================
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Throws_TEinHttp10(bool multi)
+    {
+        // HTTP/1.0 has no transfer codings: a hop that speaks only 1.0 frames this body some other way.
+        var raw =
+            "POST / HTTP/1.0\r\n" +
+            "Host: x\r\n" +
+            "Transfer-Encoding: chunked\r\n" +
+            "\r\n";
+        var ex = Assert.Throws<HttpParseException>(() => Parse(raw, multi));
+        Assert.Equal(400, ex.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Accepts_CLinHttp10(bool multi)
+    {
+        var (ok, _) = Parse("POST / HTTP/1.0\r\nHost: x\r\nContent-Length: 10\r\n\r\n", multi);
+        Assert.True(ok);
+    }
+
+    // ================================================================
     // Content-Length header name case insensitivity
     // ================================================================
 

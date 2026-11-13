@@ -165,6 +165,12 @@ All limits are configurable via `ParserLimits`:
 
 **RFC:** 9110 Section 8.6
 
+#### Transfer-Encoding in HTTP/1.0
+
+**Attack:** An HTTP/1.0 message with `Transfer-Encoding: chunked`. HTTP/1.0 has no transfer codings, so a hop that speaks only 1.0 frames the body another way, and what it leaves on the connection is read as the next message.
+
+**RFC:** 9112 Section 6.1: a recipient "MUST treat the message as if the framing is faulty, even if a Content-Length is present". Refused in requests and responses alike.
+
 #### Obfuscated Transfer-Encoding
 
 **Attack:** TE.TE smuggling via obfuscated Transfer-Encoding values (`xchunked`, `"chunked"`, `chunked-thing`). One system recognizes it as chunked, another does not.
